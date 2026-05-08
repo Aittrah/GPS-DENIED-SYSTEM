@@ -1,0 +1,230 @@
+<?xml version="1.0" ?>
+<!--
+  VNS Drone Model - Quadcopter with downward-facing camera
+  for visual navigation testing.
+  
+  Features:
+  - Downward-facing camera for visual navigation
+  - Configurable GPS sensor (can be enabled/disabled)
+  - IMU sensor for attitude estimation
+  - Compatible with PX4 SITL
+-->
+<sdf version="1.9">
+  <model name="vns_drone">
+    <pose>0 0 0.2 0 0 0</pose>
+    
+    <!-- Main body frame -->
+    <link name="base_link">
+      <inertial>
+        <mass>1.5</mass>
+        <inertia>
+          <ixx>0.029125</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.029125</iyy>
+          <iyz>0</iyz>
+          <izz>0.055225</izz>
+        </inertia>
+      </inertial>
+      
+      <collision name="body_collision">
+        <geometry>
+          <box><size>0.4 0.4 0.1</size></box>
+        </geometry>
+      </collision>
+      
+      <visual name="body_visual">
+        <geometry>
+          <box><size>0.4 0.4 0.1</size></box>
+        </geometry>
+        <material>
+          <ambient>0.2 0.2 0.2 1</ambient>
+          <diffuse>0.3 0.3 0.3 1</diffuse>
+        </material>
+      </visual>
+      
+      <!-- Downward-facing camera for visual navigation -->
+      <sensor name="vns_camera" type="camera">
+        <pose>0 0 -0.05 0 1.5708 0</pose>
+        <always_on>true</always_on>
+        <update_rate>30</update_rate>
+        <camera name="downward_camera">
+          <horizontal_fov>1.047</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>500</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
+        </camera>
+      </sensor>
+      
+      <!-- IMU sensor -->
+      <sensor name="imu_sensor" type="imu">
+        <always_on>true</always_on>
+        <update_rate>250</update_rate>
+        <imu>
+          <angular_velocity>
+            <x>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.0003</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.0003</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.0003</stddev>
+              </noise>
+            </z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.01</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.01</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.01</stddev>
+              </noise>
+            </z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
+
+      <!-- GPS sensor (configurable - can be disabled for GNSS-denied testing) -->
+      <sensor name="gps_sensor" type="gps">
+        <always_on>true</always_on>
+        <update_rate>5</update_rate>
+        <gps>
+          <position_sensing>
+            <horizontal>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.5</stddev>
+              </noise>
+            </horizontal>
+            <vertical>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>1.0</stddev>
+              </noise>
+            </vertical>
+          </position_sensing>
+          <velocity_sensing>
+            <horizontal>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.1</stddev>
+              </noise>
+            </horizontal>
+            <vertical>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.1</stddev>
+              </noise>
+            </vertical>
+          </velocity_sensing>
+        </gps>
+      </sensor>
+    </link>
+    
+    <!-- Rotor arms for visual reference -->
+    <link name="rotor_arm_front_right">
+      <pose>0.15 -0.15 0 0 0 0.785</pose>
+      <visual name="visual">
+        <geometry>
+          <box><size>0.25 0.02 0.01</size></box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.15 0.15 0.15 1</diffuse>
+        </material>
+      </visual>
+    </link>
+    
+    <link name="rotor_arm_front_left">
+      <pose>0.15 0.15 0 0 0 -0.785</pose>
+      <visual name="visual">
+        <geometry>
+          <box><size>0.25 0.02 0.01</size></box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.15 0.15 0.15 1</diffuse>
+        </material>
+      </visual>
+    </link>
+    
+    <link name="rotor_arm_back_right">
+      <pose>-0.15 -0.15 0 0 0 -0.785</pose>
+      <visual name="visual">
+        <geometry>
+          <box><size>0.25 0.02 0.01</size></box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.15 0.15 0.15 1</diffuse>
+        </material>
+      </visual>
+    </link>
+    
+    <link name="rotor_arm_back_left">
+      <pose>-0.15 0.15 0 0 0 0.785</pose>
+      <visual name="visual">
+        <geometry>
+          <box><size>0.25 0.02 0.01</size></box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.15 0.15 0.15 1</diffuse>
+        </material>
+      </visual>
+    </link>
+    
+    <!-- Fixed joints for rotor arms -->
+    <joint name="arm_fr_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>rotor_arm_front_right</child>
+    </joint>
+    
+    <joint name="arm_fl_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>rotor_arm_front_left</child>
+    </joint>
+    
+    <joint name="arm_br_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>rotor_arm_back_right</child>
+    </joint>
+    
+    <joint name="arm_bl_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>rotor_arm_back_left</child>
+    </joint>
+    
+  </model>
+</sdf>

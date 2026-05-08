@@ -1,0 +1,57 @@
+# GPS Control Configuration for VNS Simulation
+# This file configures GPS behavior for GNSS-denied testing scenarios
+
+# GPS Sensor Configuration
+gps:
+  # Enable/disable GPS sensor
+  enabled: true
+  
+  # Update rate in Hz
+  update_rate: 5.0
+  
+  # Position noise (standard deviation in meters)
+  horizontal_noise_stddev: 0.5
+  vertical_noise_stddev: 1.0
+  
+  # Velocity noise (standard deviation in m/s)
+  velocity_noise_stddev: 0.1
+
+# GNSS Denial Scenarios
+# These can be triggered during simulation to test VNS behavior
+denial_scenarios:
+  # Complete GPS loss
+  complete_denial:
+    enabled: false
+    # Duration in seconds (0 = indefinite)
+    duration: 0
+    
+  # Degraded GPS (high HDOP, few satellites)
+  degraded_signal:
+    enabled: false
+    satellite_count: 3
+    hdop: 8.0
+    duration: 30
+    
+  # Intermittent GPS (periodic dropouts)
+  intermittent:
+    enabled: false
+    # On/off cycle in seconds
+    on_duration: 10
+    off_duration: 5
+    
+  # Gradual degradation
+  gradual_degradation:
+    enabled: false
+    # Time to reach full denial (seconds)
+    ramp_duration: 20
+
+# Geographic bounds for QAU Campus simulation
+# GPS will report invalid if drone exits these bounds
+geo_bounds:
+  # QAU Campus approximate bounds
+  min_latitude: 33.740
+  max_latitude: 33.755
+  min_longitude: 73.130
+  max_longitude: 73.145
+  min_altitude: 500  # meters MSL
+  max_altitude: 700  # meters MSL

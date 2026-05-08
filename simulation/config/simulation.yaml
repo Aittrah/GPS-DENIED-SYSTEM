@@ -1,0 +1,86 @@
+# VNS Simulation Configuration
+# Configuration for running VNS with PX4 SITL + Gazebo
+# Location: QAU Campus, Islamabad, Pakistan
+
+# Camera configuration (matches Gazebo drone model)
+camera:
+  width: 640
+  height: 480
+  fx: 554.25  # Focal length x (pixels)
+  fy: 554.25  # Focal length y (pixels)
+  cx: 320.0   # Principal point x
+  cy: 240.0   # Principal point y
+  distortion: [0.0, 0.0, 0.0, 0.0, 0.0]  # No distortion in simulation
+  
+  # Camera mount position relative to drone center (meters)
+  mount_position: [0.0, 0.0, -0.05]
+  
+  # Camera mount orientation [roll, pitch, yaw] in radians
+  # Pointing straight down
+  mount_orientation: [0.0, 1.5708, 0.0]
+
+# Feature extraction settings
+feature_extraction:
+  algorithm: "ORB"
+  max_features: 500
+  scale_factor: 1.2
+  n_levels: 8
+  
+# Matching settings
+matching:
+  confidence_threshold: 0.6
+  ratio_test_threshold: 0.75
+  min_matches: 10
+
+# GNSS monitoring thresholds
+gnss:
+  degraded_hdop: 5.0
+  degraded_satellites: 4
+  denied_timeout_seconds: 2.0
+
+# Navigation settings
+navigation:
+  uncertainty_failsafe_threshold: 10.0  # meters
+  visual_timeout_seconds: 300.0  # 5 minutes
+  fusion_blend_duration: 5.0  # seconds
+  position_continuity_threshold: 2.0  # meters
+
+# Reference database
+database:
+  path: "../database/qau_campus.vnsdb"
+  query_radius_deg: 0.001  # ~100m at this latitude
+
+# MAVLink connection (PX4 SITL)
+mavlink:
+  connection_string: "udp://:14551"
+  system_id: 1
+  component_id: 196  # MAV_COMP_ID_VISUAL_INERTIAL_ODOMETRY
+
+# ROS2 topics
+ros:
+  camera_topic: "/vns_drone/camera"
+  gps_topic: "/vns_drone/gps"
+  imu_topic: "/vns_drone/imu"
+  vision_pose_topic: "/vns/vision_pose"
+
+# Logging configuration
+logging:
+  level: "DEBUG"
+  log_dir: "./logs"
+  max_size_mb: 100
+  retention_count: 5
+  log_images: true  # Save matched images for debugging
+  log_features: true  # Log feature extraction details
+
+# Simulation-specific settings
+simulation:
+  enabled: true
+  ground_truth_topic: "/vns_drone/ground_truth"
+  log_ground_truth: true
+  position_error_threshold: 5.0  # meters - warn if error exceeds this
+
+# Geographic reference (QAU Campus, Islamabad)
+geo_reference:
+  origin_latitude: 33.7470
+  origin_longitude: 73.1370
+  origin_altitude: 550.0  # meters MSL

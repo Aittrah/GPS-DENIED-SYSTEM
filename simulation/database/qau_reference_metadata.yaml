@@ -1,0 +1,216 @@
+# QAU Campus Reference Image Database Metadata
+# This file defines the reference images for visual navigation testing
+# at Quaid-i-Azam University Campus, Islamabad, Pakistan
+
+database:
+  name: "QAU Campus Reference Database"
+  version: "1.0.0"
+  created: "2024-01-01"
+  location: "QAU Campus, Islamabad, Pakistan"
+  
+  # Geographic center of the database coverage
+  center:
+    latitude: 33.7470
+    longitude: 73.1370
+    altitude: 550  # meters MSL
+    
+  # Coverage bounds
+  bounds:
+    min_latitude: 33.740
+    max_latitude: 33.755
+    min_longitude: 73.130
+    max_longitude: 73.145
+
+# Reference image capture points
+# These define locations where reference images should be captured
+# for building the visual navigation database
+reference_points:
+  # Central area around Admin Building
+  - id: "qau_admin_01"
+    latitude: 33.7470
+    longitude: 73.1370
+    altitude: 580
+    heading: 0
+    description: "Admin Building - North view"
+    
+  - id: "qau_admin_02"
+    latitude: 33.7470
+    longitude: 73.1370
+    altitude: 580
+    heading: 90
+    description: "Admin Building - East view"
+    
+  - id: "qau_admin_03"
+    latitude: 33.7470
+    longitude: 73.1370
+    altitude: 580
+    heading: 180
+    description: "Admin Building - South view"
+    
+  - id: "qau_admin_04"
+    latitude: 33.7470
+    longitude: 73.1370
+    altitude: 580
+    heading: 270
+    description: "Admin Building - West view"
+
+  # Library area
+  - id: "qau_library_01"
+    latitude: 33.7472
+    longitude: 73.1378
+    altitude: 580
+    heading: 0
+    description: "Library - North view"
+    
+  - id: "qau_library_02"
+    latitude: 33.7472
+    longitude: 73.1378
+    altitude: 580
+    heading: 180
+    description: "Library - South view"
+
+  # Physics Department
+  - id: "qau_physics_01"
+    latitude: 33.7476
+    longitude: 73.1364
+    altitude: 580
+    heading: 45
+    description: "Physics Dept - Northeast view"
+    
+  - id: "qau_physics_02"
+    latitude: 33.7476
+    longitude: 73.1364
+    altitude: 580
+    heading: 225
+    description: "Physics Dept - Southwest view"
+
+  # Chemistry Department
+  - id: "qau_chemistry_01"
+    latitude: 33.7477
+    longitude: 73.1377
+    altitude: 580
+    heading: 0
+    description: "Chemistry Dept - North view"
+
+  # Biology Department
+  - id: "qau_biology_01"
+    latitude: 33.7464
+    longitude: 73.1379
+    altitude: 580
+    heading: 90
+    description: "Biology Dept - East view"
+
+  # Computer Science Department
+  - id: "qau_cs_01"
+    latitude: 33.7465
+    longitude: 73.1362
+    altitude: 580
+    heading: 0
+    description: "CS Dept - North view"
+    
+  - id: "qau_cs_02"
+    latitude: 33.7465
+    longitude: 73.1362
+    altitude: 580
+    heading: 180
+    description: "CS Dept - South view"
+
+  # Mosque area
+  - id: "qau_mosque_01"
+    latitude: 33.7479
+    longitude: 73.1367
+    altitude: 580
+    heading: 0
+    description: "Mosque - North view with minaret"
+    
+  - id: "qau_mosque_02"
+    latitude: 33.7479
+    longitude: 73.1367
+    altitude: 580
+    heading: 180
+    description: "Mosque - South view"
+
+  # Water Tower
+  - id: "qau_tower_01"
+    latitude: 33.7470
+    longitude: 73.1382
+    altitude: 590
+    heading: 270
+    description: "Water Tower - West view"
+
+  # Hostel area
+  - id: "qau_hostel_01"
+    latitude: 33.7472
+    longitude: 73.1358
+    altitude: 580
+    heading: 90
+    description: "Hostel Block 1 - East view"
+    
+  - id: "qau_hostel_02"
+    latitude: 33.7467
+    longitude: 73.1358
+    altitude: 580
+    heading: 90
+    description: "Hostel Block 2 - East view"
+
+  # Sports Complex
+  - id: "qau_sports_01"
+    latitude: 33.7459
+    longitude: 73.1370
+    altitude: 580
+    heading: 0
+    description: "Sports Complex - North view"
+
+  # Grid coverage points (for comprehensive coverage)
+  # These provide overlapping coverage across the campus
+  - id: "grid_nw"
+    latitude: 33.7480
+    longitude: 73.1355
+    altitude: 600
+    heading: 135
+    description: "Grid NW - Southeast view"
+    
+  - id: "grid_ne"
+    latitude: 33.7480
+    longitude: 73.1385
+    altitude: 600
+    heading: 225
+    description: "Grid NE - Southwest view"
+    
+  - id: "grid_sw"
+    latitude: 33.7460
+    longitude: 73.1355
+    altitude: 600
+    heading: 45
+    description: "Grid SW - Northeast view"
+    
+  - id: "grid_se"
+    latitude: 33.7460
+    longitude: 73.1385
+    altitude: 600
+    heading: 315
+    description: "Grid SE - Northwest view"
+    
+  - id: "grid_center"
+    latitude: 33.7470
+    longitude: 73.1370
+    altitude: 620
+    heading: 0
+    description: "Grid Center - Overhead view"
+
+# Flight path for database capture
+# Suggested waypoints for systematic image capture
+capture_flight_path:
+  altitude: 50  # meters AGL
+  speed: 5      # m/s
+  waypoints:
+    - [33.7480, 73.1355]  # NW corner
+    - [33.7480, 73.1385]  # NE corner
+    - [33.7475, 73.1385]  # Move south
+    - [33.7475, 73.1355]  # Move west
+    - [33.7470, 73.1355]  # Continue pattern
+    - [33.7470, 73.1385]
+    - [33.7465, 73.1385]
+    - [33.7465, 73.1355]
+    - [33.7460, 73.1355]  # SW corner
+    - [33.7460, 73.1385]  # SE corner

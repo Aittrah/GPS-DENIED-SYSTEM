@@ -1,0 +1,7 @@
+.kiro/
+.env
+.idea/
+.vscode/
+node_modules/
+dist/
+build/
