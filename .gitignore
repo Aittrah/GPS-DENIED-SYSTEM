@@ -1,7 +1,33 @@
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# pytest
+.pytest_cache/
+.coverage
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# IDE
 .kiro/
 .env
 .idea/
 .vscode/
-node_modules/
-dist/
-build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large data files
+data/satellite_tiles/
+data/database/*.pkl
+data/kml/fly_to.kml
