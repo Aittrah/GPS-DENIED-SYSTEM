@@ -1,0 +1,14 @@
+opencv-python
+numpy
+scipy
+PyYAML
+mavsdk
+torch
+torchvision
+pytest
+pytest-asyncio
+pytest-cov
+ruff
+mypy
+hypothesis
+pygeodesy
