@@ -1,0 +1,25 @@
+# PX4 SITL Parameters for VNS GNSS-Denied Navigation
+# Load at SITL boot:  param load <path>/px4_params.txt
+#
+# These configure EKF2 to accept external vision estimates from the VNS
+# node and disable GPS fusion for GNSS-denied flight.
+
+# ── EKF2: External Vision Fusion ──
+# Accept vision: horizontal pos + vertical pos + yaw (bitfield: 1+2+8 = 11)
+param set EKF2_EV_CTRL 11
+# Use vision as height reference (3 = EV, 1 = baro fallback if vision z is unreliable)
+param set EKF2_HGT_REF 3
+
+# ── EKF2: Disable GPS ──
+# Set to 0 for GNSS-denied mode; set to 7 to re-enable for baseline runs
+param set EKF2_GPS_CTRL 0
+
+# ── Failsafe Behavior ──
+# On data-link loss: hold position (loiter)
+param set COM_OBL_ACT 1
+# On RC loss: hold position (loiter)
+param set COM_OBL_RC_ACT 1
+
+# ── Navigation ──
+# Waypoint acceptance radius (meters)
+param set NAV_ACC_RAD 2.0
