@@ -43,6 +43,25 @@ matching:
 retrieval:
   top_k: 5
   backend: "flann_lsh"
+  # --- BoVW coarse-retrieval index (offline scalability layer) ---
+  # NOTE on config authority: vocab_size/metric/random_state/batch_size are
+  # BUILD-TIME defaults read by build_reference_database.py. At QUERY time, K and
+  # metric come from the persisted .vnsdb (they must match the trained vocabulary);
+  # only top_k (above) is read from this file at query time. Editing K or metric
+  # here does NOT retroactively change an already-built database.
+  bovw:
+    enabled: true
+    vocab_size: 1000      # K visual words (k-means clusters); auto-clamped if total descriptors < K
+    metric: "cosine"      # histogram NN metric: "cosine" or "l2"
+    random_state: 42      # MiniBatchKMeans seed -> reproducible rebuilds
+    batch_size: 1000      # MiniBatchKMeans mini-batch size
+    # Hybrid retrieval (query-time only): intersect the BoVW appearance top-k
+    # with a geographic radius around the current position prior. The gate is
+    # applied ONLY when a trustworthy prior exists (live GPS fix or a recent
+    # visual estimate) -- never against the default origin -- and it falls back
+    # to the unfiltered BoVW top-k if it would otherwise discard every candidate.
+    geo_gate: true
+    geo_gate_radius_deg: 0.002  # ~200m; generous to tolerate drift in the visual prior
 
 # GNSS monitoring thresholds
 gnss:
