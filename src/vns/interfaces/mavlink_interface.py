@@ -133,6 +133,45 @@ class MAVLinkInterface:
                 await self._gps_task
         logger.info("MAVLink interface disconnected")
 
+    async def send_vision_position_estimate(
+        self,
+        x_m: float,
+        y_m: float,
+        z_m: float,
+        roll_rad: float = 0.0,
+        pitch_rad: float = 0.0,
+        yaw_rad: float = 0.0,
+        time_usec: int = 0,
+    ) -> bool:
+        """
+        Send VISION_POSITION_ESTIMATE to PX4 EKF2.
+
+        Coordinates are local NED (North-East-Down) relative to EKF2 origin.
+        PX4 fuses this when EKF2_EV_CTRL is set appropriately.
+
+        Returns True on success, False if not connected.
+        """
+        if not self._connected or self._system is None:
+            logger.warning("Cannot send vision estimate: not connected")
+            return False
+        try:
+            from mavsdk.mocap import VisionPositionEstimate, PositionBody, AngleBody, Covariance
+
+            position = PositionBody(x_m, y_m, z_m)
+            angle = AngleBody(roll_rad, pitch_rad, yaw_rad)
+            covariance = Covariance([float('nan')] * 21)
+            estimate = VisionPositionEstimate(
+                time_usec=time_usec,
+                position_body=position,
+                angle_body=angle,
+                pose_covariance=covariance,
+            )
+            await self._system.mocap.set_vision_position_estimate(estimate)
+            return True
+        except Exception as exc:
+            logger.warning("Failed to send vision position estimate: %s", exc)
+            return False
+
     @property
     def is_connected(self) -> bool:
         return self._connected

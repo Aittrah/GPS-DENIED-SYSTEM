@@ -3,13 +3,15 @@
 
 Subscribes to camera, GPS, IMU, and ground-truth topics from Gazebo,
 runs visual feature matching against the reference database, and
-publishes vision-based pose estimates.
+sends VISION_POSITION_ESTIMATE to PX4 EKF2 via MAVLink.
 """
 
+import asyncio
+import math
+import threading
 import time
 from pathlib import Path
 
-import cv2
 import numpy as np
 import rclpy
 import yaml
@@ -22,6 +24,8 @@ from sensor_msgs.msg import Image, Imu, NavSatFix
 from vns.core.blender import PositionBlender
 from vns.core.gnss_monitor import GnssMonitor, GnssState
 from vns.database.reference_db import ReferenceDatabase
+from vns.interfaces.mavlink_interface import MAVLinkInterface
+from vns.utils.coordinates import geodetic_to_enu
 from vns.vision.extractor import FeatureExtractor
 from vns.vision.matcher import FeatureMatcher
 
@@ -47,6 +51,7 @@ class VnsNode(Node):
         gnss_cfg = self._cfg.get('gnss', {})
         nav_cfg = self._cfg.get('navigation', {})
         geo_cfg = self._cfg.get('geo_reference', {})
+        mav_cfg = self._cfg.get('mavlink', {})
 
         self._camera_config = cam_cfg
         self._geo_origin = geo_cfg
@@ -80,6 +85,16 @@ class VnsNode(Node):
         self._last_gps = None
         self._last_altitude = 0.0
         self._last_heading = 0.0
+        self._last_yaw_rad = 0.0
+
+        # MAVLink interface (async) — runs in a background thread
+        self._mavlink = MAVLinkInterface.from_config(mav_cfg)
+        self._loop = asyncio.new_event_loop()
+        self._mavlink_thread = threading.Thread(
+            target=self._run_async_loop, daemon=True)
+        self._mavlink_thread.start()
+        asyncio.run_coroutine_threadsafe(
+            self._mavlink_connect(), self._loop)
 
         self._cam_sub = self.create_subscription(
             Image, 'camera/image_raw', self._on_image, 10)
@@ -95,6 +110,35 @@ class VnsNode(Node):
         self._gnss_timer = self.create_timer(1.0, self._check_gnss_timeout)
 
         self.get_logger().info('VNS node started')
+
+    # ── Async helpers ──
+
+    def _run_async_loop(self):
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
+
+    async def _mavlink_connect(self):
+        try:
+            await self._mavlink.connect()
+            self.get_logger().info('MAVLink connected')
+        except Exception as e:
+            self.get_logger().error(f'MAVLink connection failed: {e}')
+
+    def _send_vision_estimate(
+        self, n: float, e: float, d: float, yaw_rad: float
+    ):
+        """Schedule async send of VISION_POSITION_ESTIMATE to PX4."""
+        time_usec = int(time.time() * 1e6)
+        asyncio.run_coroutine_threadsafe(
+            self._mavlink.send_vision_position_estimate(
+                x_m=n, y_m=e, z_m=d,
+                yaw_rad=yaw_rad,
+                time_usec=time_usec,
+            ),
+            self._loop,
+        )
+
+    # ── Config / DB ──
 
     def _load_config(self, path: str) -> dict:
         if not path or not Path(path).exists():
@@ -115,6 +159,8 @@ class VnsNode(Node):
         except Exception as e:
             self.get_logger().error(f'Failed to load database: {e}')
             return None
+
+    # ── Callbacks ──
 
     def _on_image(self, msg: Image):
         cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
@@ -142,7 +188,6 @@ class VnsNode(Node):
                 self._last_heading, self._geo_origin,
             )
             if result is not None:
-                _, _, _ = result
                 _, _, conf = self._matcher.match(kp, des, entry)
                 if conf > best_confidence:
                     best_confidence = conf
@@ -159,6 +204,7 @@ class VnsNode(Node):
         blended, mode = self._blender.blend(
             gps_pos, visual_pos, gnss_state, time.time())
 
+        # Publish on ROS topic
         pose_msg = PoseStamped()
         pose_msg.header.stamp = self.get_clock().now().to_msg()
         pose_msg.header.frame_id = 'map'
@@ -166,6 +212,16 @@ class VnsNode(Node):
         pose_msg.pose.position.y = blended[0]  # lat
         pose_msg.pose.position.z = blended[2]  # alt
         self._vision_pub.publish(pose_msg)
+
+        # Convert geodetic -> local NED and send to PX4 EKF2
+        origin_lat = self._geo_origin.get('origin_latitude', 0.0)
+        origin_lon = self._geo_origin.get('origin_longitude', 0.0)
+        origin_alt = self._geo_origin.get('origin_altitude', 0.0)
+        e, n, u = geodetic_to_enu(
+            blended[0], blended[1], blended[2],
+            origin_lat, origin_lon, origin_alt)
+        self._send_vision_estimate(
+            n=n, e=e, d=-u, yaw_rad=self._last_yaw_rad)
 
     def _on_gps(self, msg: NavSatFix):
         self._last_gps = (msg.latitude, msg.longitude, msg.altitude)
@@ -180,8 +236,9 @@ class VnsNode(Node):
         q = msg.orientation
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-        yaw_rad = np.arctan2(siny_cosp, cosy_cosp)
-        self._last_heading = np.degrees(yaw_rad)
+        yaw_rad = math.atan2(siny_cosp, cosy_cosp)
+        self._last_yaw_rad = yaw_rad
+        self._last_heading = math.degrees(yaw_rad)
 
     def _on_ground_truth(self, msg: Odometry):
         self._last_altitude = msg.pose.pose.position.z
@@ -189,13 +246,20 @@ class VnsNode(Node):
     def _check_gnss_timeout(self):
         self._gnss_monitor.check_timeout()
 
+    def destroy_node(self):
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._mavlink_thread.join(timeout=2.0)
+        super().destroy_node()
+
 
 def main(args=None):
     rclpy.init(args=args)
     node = VnsNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':
