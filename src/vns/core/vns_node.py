@@ -26,8 +26,7 @@ from vns.core.gnss_monitor import GnssMonitor, GnssState
 from vns.database.reference_db import ReferenceDatabase
 from vns.interfaces.mavlink_interface import MAVLinkInterface
 from vns.utils.coordinates import geodetic_to_enu
-from vns.vision.extractor import FeatureExtractor
-from vns.vision.matcher import FeatureMatcher
+from vns.vision.localizer import VisualLocalizer
 
 
 class VnsNode(Node):
@@ -45,28 +44,13 @@ class VnsNode(Node):
         self._cfg = self._load_config(config_path)
         self._bridge = CvBridge()
 
-        cam_cfg = self._cfg.get('camera', {})
-        feat_cfg = self._cfg.get('feature_extraction', {})
-        match_cfg = self._cfg.get('matching', {})
         gnss_cfg = self._cfg.get('gnss', {})
         nav_cfg = self._cfg.get('navigation', {})
         geo_cfg = self._cfg.get('geo_reference', {})
         mav_cfg = self._cfg.get('mavlink', {})
 
-        self._camera_config = cam_cfg
         self._geo_origin = geo_cfg
 
-        self._extractor = FeatureExtractor(
-            algorithm=feat_cfg.get('algorithm', 'ORB'),
-            max_features=feat_cfg.get('max_features', 500),
-            scale_factor=feat_cfg.get('scale_factor', 1.2),
-            n_levels=feat_cfg.get('n_levels', 8),
-        )
-        self._matcher = FeatureMatcher(
-            confidence_threshold=match_cfg.get('confidence_threshold', 0.6),
-            ratio_test_threshold=match_cfg.get('ratio_test_threshold', 0.75),
-            min_matches=match_cfg.get('min_matches', 10),
-        )
         self._gnss_monitor = GnssMonitor(
             degraded_hdop=gnss_cfg.get('degraded_hdop', 5.0),
             degraded_satellites=gnss_cfg.get('degraded_satellites', 4),
@@ -80,7 +64,9 @@ class VnsNode(Node):
         )
 
         self._db = self._load_database(db_path)
-        self._query_radius = self._cfg.get('database', {}).get('query_radius_deg', 0.001)
+        self._localizer = None
+        if self._db is not None:
+            self._localizer = VisualLocalizer(self._cfg, self._db)
 
         self._last_gps = None
         self._last_altitude = 0.0
@@ -163,48 +149,23 @@ class VnsNode(Node):
     # ── Callbacks ──
 
     def _on_image(self, msg: Image):
+        if self._localizer is None:
+            return
+
         cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-
-        kp, des = self._extractor.detect_and_compute(cv_image)
-        if len(kp) == 0 or self._db is None:
+        result = self._localizer.localize(
+            cv_image, self._last_altitude, self._last_heading,
+        )
+        if not result.success:
             return
 
-        anchor_lat = self._last_gps[0] if self._last_gps else \
-            self._geo_origin.get('origin_latitude', 0.0)
-        anchor_lon = self._last_gps[1] if self._last_gps else \
-            self._geo_origin.get('origin_longitude', 0.0)
-
-        candidates = self._db.query_region(
-            anchor_lat, anchor_lon, self._query_radius)
-        if not candidates:
-            return
-
-        best_result = None
-        best_confidence = 0.0
-        for entry in candidates:
-            result = self._matcher.estimate_relative_pose(
-                kp, des, entry,
-                self._camera_config, self._last_altitude,
-                self._last_heading, self._geo_origin,
-            )
-            if result is not None:
-                _, _, conf = self._matcher.match(kp, des, entry)
-                if conf > best_confidence:
-                    best_confidence = conf
-                    best_result = result
-
-        if best_result is None:
-            return
-
-        lat, lon, alt = best_result
-        visual_pos = (lat, lon, alt)
+        visual_pos = result.pose_geodetic
         gps_pos = self._last_gps
         gnss_state = self._gnss_monitor.state
 
         blended, mode = self._blender.blend(
             gps_pos, visual_pos, gnss_state, time.time())
 
-        # Publish on ROS topic
         pose_msg = PoseStamped()
         pose_msg.header.stamp = self.get_clock().now().to_msg()
         pose_msg.header.frame_id = 'map'
@@ -213,7 +174,6 @@ class VnsNode(Node):
         pose_msg.pose.position.z = blended[2]  # alt
         self._vision_pub.publish(pose_msg)
 
-        # Convert geodetic -> local NED and send to PX4 EKF2
         origin_lat = self._geo_origin.get('origin_latitude', 0.0)
         origin_lon = self._geo_origin.get('origin_longitude', 0.0)
         origin_alt = self._geo_origin.get('origin_altitude', 0.0)
@@ -221,7 +181,7 @@ class VnsNode(Node):
             blended[0], blended[1], blended[2],
             origin_lat, origin_lon, origin_alt)
         self._send_vision_estimate(
-            n=n, e=e, d=-u, yaw_rad=self._last_yaw_rad)
+            n=n, e=e, d=-u, yaw_rad=result.yaw_rad)
 
     def _on_gps(self, msg: NavSatFix):
         self._last_gps = (msg.latitude, msg.longitude, msg.altitude)

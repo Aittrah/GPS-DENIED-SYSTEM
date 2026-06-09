@@ -26,11 +26,23 @@ feature_extraction:
   scale_factor: 1.2
   n_levels: 8
   
+# Preprocessing settings (applied to query frames before feature extraction)
+preprocessing:
+  target_width: 640
+  target_height: 480
+  clahe_clip_limit: 2.0
+  clahe_grid_size: 8
+
 # Matching settings
 matching:
   confidence_threshold: 0.6
   ratio_test_threshold: 0.75
   min_matches: 10
+
+# Coarse retrieval settings
+retrieval:
+  top_k: 5
+  backend: "flann_lsh"
 
 # GNSS monitoring thresholds
 gnss:
