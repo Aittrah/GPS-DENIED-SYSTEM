@@ -264,7 +264,7 @@
       <child>camera_link</child>
     </joint>
 
-    <!-- ============== GPS (included from PX4 model) ============== -->
+    <!-- ============== GPS (PX4 model — feeds SITL via Gazebo transport) ============== -->
     <include>
       <uri>model://gps</uri>
       <pose>0.05 0 0.04 0 0 0</pose>
@@ -273,6 +273,64 @@
     <joint name='gps0_joint' type='fixed'>
       <child>gps0::link</child>
       <parent>base_link</parent>
+    </joint>
+
+    <!-- ============== GPS LINK + ROS 2 SENSOR (with spec noise) ============== -->
+    <link name='gps_link'>
+      <pose>0.05 0 0.04 0 0 0</pose>
+      <inertial>
+        <mass>0.01</mass>
+        <inertia>
+          <ixx>1e-06</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>1e-06</iyy><iyz>0</iyz>
+          <izz>1e-06</izz>
+        </inertia>
+      </inertial>
+      <sensor name='gps_sensor' type='gps'>
+        <always_on>true</always_on>
+        <update_rate>5</update_rate>
+        <gps>
+          <position_sensing>
+            <horizontal>
+              <noise type='gaussian'>
+                <mean>0</mean>
+                <stddev>0.5</stddev>
+              </noise>
+            </horizontal>
+            <vertical>
+              <noise type='gaussian'>
+                <mean>0</mean>
+                <stddev>1.0</stddev>
+              </noise>
+            </vertical>
+          </position_sensing>
+          <velocity_sensing>
+            <horizontal>
+              <noise type='gaussian'>
+                <mean>0</mean>
+                <stddev>0.1</stddev>
+              </noise>
+            </horizontal>
+            <vertical>
+              <noise type='gaussian'>
+                <mean>0</mean>
+                <stddev>0.1</stddev>
+              </noise>
+            </vertical>
+          </velocity_sensing>
+        </gps>
+        <plugin name='gps_ros_plugin' filename='libgazebo_ros_gps_sensor.so'>
+          <ros>
+            <namespace>/vns_drone</namespace>
+            <remapping>~/out:=gps_raw</remapping>
+          </ros>
+          <frame_name>gps_link</frame_name>
+        </plugin>
+      </sensor>
+    </link>
+    <joint name='gps_link_joint' type='fixed'>
+      <parent>base_link</parent>
+      <child>gps_link</child>
     </joint>
 
     <!-- ======================== PX4 PLUGINS ======================== -->
@@ -503,16 +561,9 @@
       <gaussian_noise>0.01</gaussian_noise>
     </plugin>
 
-    <!-- GPS -> /vns_drone/gps (sensor_msgs/NavSatFix) -->
-    <plugin name='gps_ros_plugin' filename='libgazebo_ros_gps_sensor.so'>
-      <ros>
-        <namespace>/vns_drone</namespace>
-        <remapping>~/out:=gps</remapping>
-      </ros>
-      <body_name>base_link</body_name>
-      <update_rate>5</update_rate>
-      <frame_name>base_link</frame_name>
-    </plugin>
+    <!-- GPS ROS 2 bridge is now inside <sensor type="gps"> on gps_link above.
+         Raw data publishes to /vns_drone/gps_raw; the gps_gate_node relays
+         to /vns_drone/gps when GPS is enabled and silences it for denial. -->
 
     <!-- Ground truth -> /vns_drone/ground_truth (nav_msgs/Odometry) -->
     <plugin name='p3d_plugin' filename='libgazebo_ros_p3d.so'>

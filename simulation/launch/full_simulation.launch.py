@@ -140,10 +140,27 @@ def generate_launch_description():
 
     # ==================== ROS-Gazebo Bridges ====================
     #
-    # In Gazebo Classic the bridges are gazebo_ros plugins declared inside the
-    # iris_downward_cam SDF (libgazebo_ros_camera, libgazebo_ros_imu_sensor,
-    # libgazebo_ros_gps_sensor, libgazebo_ros_p3d). They publish directly on
-    # ROS 2 topics under /vns_drone — no separate bridge nodes needed here.
+    # Gazebo Classic plugins in the SDF publish sensor data on ROS 2 topics:
+    #   camera, IMU, ground-truth -> /vns_drone/* (direct)
+    #   GPS -> /vns_drone/gps_raw (gated by gps_gate_node below)
+
+    # GPS gate: relays gps_raw -> gps when enabled, silences for denial.
+    # Toggle at runtime:
+    #   ros2 service call /vns/set_gps_enabled std_srvs/srv/SetBool "{data: false}"
+    gps_gate = TimerAction(
+        period=5.0,
+        actions=[
+            ExecuteProcess(
+                cmd=[
+                    'python3',
+                    str(pkg_dir / 'scripts' / 'gps_gate_node.py'),
+                    '--ros-args',
+                    '-p', ['gps_enabled:=', LaunchConfiguration('gps_enabled')],
+                ],
+                output='screen',
+            )
+        ]
+    )
 
     # ==================== PX4 SITL ====================
     #
@@ -203,6 +220,7 @@ def generate_launch_description():
         cmd=[
             'ros2', 'bag', 'record',
             '/vns_drone/camera',
+            '/vns_drone/gps_raw',
             '/vns_drone/gps',
             '/vns_drone/imu',
             '/vns_drone/ground_truth',
@@ -244,6 +262,9 @@ def generate_launch_description():
         gzserver,
         gzclient,
         spawn_drone,
+
+        # GPS gate (gps_raw -> gps, toggleable at runtime)
+        gps_gate,
 
         # PX4
         px4_sitl,
