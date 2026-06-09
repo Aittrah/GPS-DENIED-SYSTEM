@@ -1,0 +1,51 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/block-gz-sim.sh\"",
+            "statusMessage": "VNS: checking for gz sim …"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/block-px4-gz-vehicle.sh\"",
+            "statusMessage": "VNS: checking PX4 make target …"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/block-bare-pip.sh\"",
+            "statusMessage": "VNS: checking pip usage …"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/block-bare-python.sh\"",
+            "statusMessage": "VNS: checking python usage …"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/block-ros-gz-bridge.sh\"",
+            "statusMessage": "VNS: checking for ros_gz_bridge …"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/block-gz-sim-resource-path.sh\"",
+            "statusMessage": "VNS: checking env-var usage …"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/block-wrong-paths.sh\"",
+            "statusMessage": "VNS: checking path conventions …"
+          }
+        ]
+      }
+    ]
+  }
+}
