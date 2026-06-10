@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 """
-PX4 SITL Launch File
+PX4 SITL Launch File (Gazebo Classic 11 + ROS 2 Humble)
 
-Launches PX4 Software-In-The-Loop simulation for VNS testing.
-This connects to Gazebo and provides MAVLink interface for VNS.
+Launches PX4 Software-In-The-Loop in "none" mode so it pairs with an
+already-running Gazebo Classic simulation rather than the newer
+`gz_<vehicle>` targets that require Gazebo Harmonic.
 
 Usage:
     ros2 launch vns_simulation px4_sitl.launch.py
-    
-    # With specific vehicle:
+
+    # With specific vehicle airframe:
     ros2 launch vns_simulation px4_sitl.launch.py vehicle:=iris
+
+Notes:
+    - Gazebo is launched separately (see full_simulation.launch.py or
+      UAV_simulation.launch.py). This file only starts PX4 + MAVLink.
+    - PX4 -> ground listener UDP: 14550 (QGC) and 14540 (offboard / VNS).
 """
 
-import os
 from pathlib import Path
 
 from launch import LaunchDescription
@@ -22,116 +27,101 @@ from launch.actions import (
     SetEnvironmentVariable,
     TimerAction,
 )
-from launch.substitutions import LaunchConfiguration, EnvironmentVariable
+from launch.substitutions import LaunchConfiguration
 
 
 def generate_launch_description():
-    """Generate the launch description for PX4 SITL."""
-    
-    # Launch arguments
+    """Generate the launch description for PX4 SITL on Gazebo Classic."""
+
+    # ==================== Launch Arguments ====================
+
     px4_dir_arg = DeclareLaunchArgument(
         'px4_dir',
-        default_value='/opt/px4/PX4-Autopilot',
+        default_value=str(Path.home() / 'PX4-Autopilot'),
         description='Path to PX4-Autopilot directory'
     )
-    
+
     vehicle_arg = DeclareLaunchArgument(
         'vehicle',
-        default_value='x500',
-        description='PX4 vehicle model (iris, x500, etc.)'
+        default_value='iris',
+        description='PX4 airframe (iris, standard_vtol, etc.). '
+                    'Use Classic-compatible airframes only.'
     )
-    
-    world_arg = DeclareLaunchArgument(
-        'world',
-        default_value='qau_campus',
-        description='Gazebo world name'
-    )
-    
+
     instance_arg = DeclareLaunchArgument(
         'instance',
         default_value='0',
-        description='PX4 instance number'
+        description='PX4 instance number (for multi-vehicle setups)'
     )
-    
+
     mavlink_udp_port_arg = DeclareLaunchArgument(
         'mavlink_udp_port',
         default_value='14540',
-        description='MAVLink UDP port'
+        description='MAVLink UDP port that VNS will connect to'
     )
-    
-    # Environment variables for PX4
+
+    # ==================== Environment ====================
+
     px4_home = SetEnvironmentVariable(
         'PX4_HOME',
         LaunchConfiguration('px4_dir')
     )
-    
+
     px4_sim_model = SetEnvironmentVariable(
         'PX4_SIM_MODEL',
         LaunchConfiguration('vehicle')
     )
-    
-    # PX4 SITL process
+
+    # Tell PX4 we are using an external Gazebo Classic instance.
+    px4_sim_world = SetEnvironmentVariable(
+        'PX4_SIM_WORLD',
+        'none'
+    )
+
+    # ==================== PX4 SITL Process ====================
+    #
+    # `make px4_sitl none_iris` builds (if needed) and starts PX4 expecting
+    # an already-running Gazebo Classic. Headless because Gazebo provides
+    # its own GUI through gzclient.
+
     px4_sitl = ExecuteProcess(
         cmd=[
-            'bash', '-c',
-            'cd $PX4_HOME && make px4_sitl_default gz_' + 
-            '$(echo $PX4_SIM_MODEL)'
+            'bash', '-lc',
+            'cd "$PX4_HOME" && HEADLESS=1 make px4_sitl none_${PX4_SIM_MODEL}'
         ],
         output='screen',
-        shell=True
     )
-    
-    # Alternative: Direct PX4 execution (if already built)
-    px4_direct = ExecuteProcess(
-        cmd=[
-            'bash', '-c',
-            '''
-            cd ${PX4_HOME} && \
-            source Tools/simulation/gz/setup_gz.bash && \
-            ./build/px4_sitl_default/bin/px4 \
-                -i ${INSTANCE} \
-                -d ./build/px4_sitl_default/etc
-            '''
-        ],
-        output='screen',
-        shell=True,
-        additional_env={
-            'INSTANCE': LaunchConfiguration('instance'),
-        }
-    )
-    
-    # MAVLink router for multiple connections
-    mavlink_router = ExecuteProcess(
-        cmd=[
-            'mavlink-routerd',
-            '-e', '127.0.0.1:14550',  # QGroundControl
-            '-e', '127.0.0.1:14551',  # VNS
-            '0.0.0.0:14540'           # PX4 SITL
-        ],
-        output='screen'
-    )
-    
+
+    # ==================== MAVLink Router (optional) ====================
+    #
+    # PX4 SITL already opens UDP 14550 and 14540 by default, so a router is
+    # only needed if you want >2 simultaneous ground listeners. Keep it
+    # commented unless you have mavlink-routerd installed.
+    #
+    # mavlink_router = ExecuteProcess(
+    #     cmd=[
+    #         'mavlink-routerd',
+    #         '-e', '127.0.0.1:14550',  # QGroundControl
+    #         '-e', '127.0.0.1:14551',  # VNS
+    #         '0.0.0.0:14540'
+    #     ],
+    #     output='screen'
+    # )
+
     return LaunchDescription([
         # Arguments
         px4_dir_arg,
         vehicle_arg,
-        world_arg,
         instance_arg,
         mavlink_udp_port_arg,
-        
+
         # Environment
         px4_home,
         px4_sim_model,
-        
-        # PX4 SITL (delayed start to allow Gazebo to initialize)
-        TimerAction(
-            period=5.0,
-            actions=[px4_sitl]
-        ),
-        
-        # MAVLink router (delayed start)
-        TimerAction(
-            period=8.0,
-            actions=[mavlink_router]
-        ),
+        px4_sim_world,
+
+        # Delayed start so Gazebo (if launched in parallel) has time to come up
+        TimerAction(period=5.0, actions=[px4_sitl]),
+
+        # TimerAction(period=8.0, actions=[mavlink_router]),
     ])

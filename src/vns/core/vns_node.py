@@ -186,10 +186,14 @@ class VnsNode(Node):
     def _on_gps(self, msg: NavSatFix):
         self._last_gps = (msg.latitude, msg.longitude, msg.altitude)
         has_fix = msg.status.status >= 0
+        # NavSatFix carries no satellite count, so derive a representative one
+        # from the fix flag: a real fix must report healthy (>= degraded_satellites)
+        # so the monitor can reach HEALTHY, otherwise GnssMonitor pins to DEGRADED
+        # and the blender abandons good GPS for visual navigation.
         self._gnss_monitor.update(
             has_fix=has_fix,
-            num_satellites=0,
-            hdop=99.9 if not has_fix else 1.0,
+            num_satellites=10 if has_fix else 0,
+            hdop=1.0 if has_fix else 99.9,
         )
 
     def _on_imu(self, msg: Imu):

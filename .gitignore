@@ -5,3 +5,13 @@
 node_modules/
 dist/
 build/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# VNS runtime artifacts
+logs/
+reports/
+assign.ipynb

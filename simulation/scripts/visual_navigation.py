@@ -33,6 +33,7 @@ from vns.config.config_manager import ConfigManager
 from vns.core.blender import PositionBlender
 from vns.core.gnss_monitor import GnssMonitor, GnssState
 from vns.database.reference_db import ReferenceDatabase
+from vns.utils.coordinates import enu_to_geodetic, geodetic_to_enu
 from vns.utils.logging import setup_logging
 from vns.vision.bovw_retrieval import BoVWIndex
 from vns.vision.extractor import FeatureExtractor
