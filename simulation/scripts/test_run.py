@@ -23,7 +23,15 @@ def main():
     
     # Let's generate a mock 640x480 gray image for processing
     # To get matching features, we will load a real reference image from the database!
-    db = ReferenceDatabase.load(database_path)
+    try:
+        db = ReferenceDatabase.load(database_path)
+    except ValueError as exc:
+        print(
+            f"{exc}\nMigrate the database with: "
+            f"vns database migrate --input {database_path} "
+            f"--output {database_path}"
+        )
+        sys.exit(1)
     first_entry = list(db.entries.values())[0]
     
     # Read the actual reference image to guarantee a 100% successful feature match!

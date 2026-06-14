@@ -1,0 +1,6 @@
+numpy
+opencv-python
+PyYAML
+requests
+scikit-learn
+mavsdk

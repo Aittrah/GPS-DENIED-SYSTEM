@@ -15,7 +15,6 @@ Requirements:
 
 import argparse
 import logging
-import pickle
 import sys
 import time
 from dataclasses import dataclass, field
@@ -41,6 +40,11 @@ if _REPO_SRC.exists() and str(_REPO_SRC) not in sys.path:
 try:
     from sklearn.cluster import MiniBatchKMeans
 
+    from vns.database.reference_db import (
+        DatabaseEntry as SafeDatabaseEntry,
+        GeoBounds as SafeGeoBounds,
+        ReferenceDatabase as SafeReferenceDatabase,
+    )
     from vns.vision.bovw_retrieval import BoVWIndex, compute_bovw_histogram
 except ImportError:
     print("Error: scikit-learn not installed. Run: pip3 install scikit-learn")
@@ -175,7 +179,7 @@ def build_database(
     # Initialize database with first image bounds
     first = images[0]
     db = ReferenceDatabase(
-        version="1.1.0",  # 1.1.0 adds the optional BoVW index block
+        version="2.0.0",  # 2.0.0 stores the safe archive format
         name="QAU Campus Reference Database",
         created=datetime.utcnow().isoformat(),
         algorithm=algorithm,
@@ -293,58 +297,46 @@ def build_bovw_vocabulary(
 
 
 def save_database(db: ReferenceDatabase, output_path: str) -> None:
-    """Save database to binary file."""
-    # Convert to serializable format
-    data = {
-        'version': db.version,
-        'name': db.name,
-        'created': db.created,
-        'algorithm': db.algorithm,
-        'bounds': {
-            'min_lat': db.bounds.min_lat,
-            'max_lat': db.bounds.max_lat,
-            'min_lon': db.bounds.min_lon,
-            'max_lon': db.bounds.max_lon
-        },
-        'entries': {}
-    }
-    
+    """Save database to the canonical safe archive format."""
+    safe_db = SafeReferenceDatabase(
+        name=db.name,
+        version=db.version,
+        algorithm=db.algorithm,
+        created=db.created,
+    )
+    safe_db.bounds = SafeGeoBounds(
+        min_lat=db.bounds.min_lat,
+        max_lat=db.bounds.max_lat,
+        min_lon=db.bounds.min_lon,
+        max_lon=db.bounds.max_lon,
+    )
+    safe_db.vocabulary = None if db.vocabulary is None else np.asarray(
+        db.vocabulary, dtype=np.float32,
+    )
+    safe_db.bovw_metric = db.bovw_metric
+
     for entry_id, entry in db.entries.items():
-        data['entries'][entry_id] = {
-            'id': entry.id,
-            'source_path': entry.source_path,
-            'latitude': entry.latitude,
-            'longitude': entry.longitude,
-            'altitude': entry.altitude,
-            'heading': entry.heading,
-            'capture_time': entry.capture_time,
-            'feature_count': entry.feature_count,
-            'feature_algorithm': entry.feature_algorithm,
-            'keypoints': entry.keypoints,
-            'descriptors': entry.descriptors,
-            'metadata': entry.metadata
-        }
+        safe_db.entries[entry_id] = SafeDatabaseEntry(
+            id=entry.id,
+            source_path=entry.source_path,
+            latitude=entry.latitude,
+            longitude=entry.longitude,
+            altitude=entry.altitude,
+            heading=entry.heading,
+            capture_time=entry.capture_time,
+            feature_count=entry.feature_count,
+            feature_algorithm=entry.feature_algorithm,
+            keypoints=np.asarray(entry.keypoints, dtype=np.float32),
+            descriptors=np.asarray(entry.descriptors, dtype=np.uint8),
+            metadata=dict(entry.metadata),
+            bovw_histogram=(
+                None
+                if entry.bovw_histogram is None
+                else np.asarray(entry.bovw_histogram, dtype=np.float32)
+            ),
+        )
 
-    # Persist the BoVW index data so a query-time loader can rebuild everything.
-    # We store the vocabulary + histograms (not a fitted sklearn object, which is
-    # version-fragile); BoVWIndex.load refits NearestNeighbors deterministically.
-    # The 'ids' list fixes histogram row order. Absent block => legacy/no-vocab DB.
-    if db.vocabulary is not None:
-        ids = list(db.entries.keys())
-        histograms = np.vstack([
-            db.entries[i].bovw_histogram for i in ids
-        ]).astype(np.float32)
-        data['bovw'] = {
-            'k': int(db.vocabulary.shape[0]),
-            'metric': db.bovw_metric,
-            'vocabulary': db.vocabulary,
-            'ids': ids,
-            'histograms': histograms,
-        }
-
-    with open(output_path, 'wb') as f:
-        pickle.dump(data, f)
-
+    safe_db.save(output_path)
     print(f"Database saved to: {output_path}")
 
 

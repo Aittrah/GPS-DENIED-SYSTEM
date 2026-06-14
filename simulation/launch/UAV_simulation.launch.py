@@ -53,7 +53,7 @@ def generate_launch_description():
 
     world_file_arg = DeclareLaunchArgument(
         'world_file',
-        default_value=str(worlds_dir / 'vns_test_world.sdf'),
+        default_value=str(worlds_dir / 'uav_test_world.sdf'),
         description='Path to Gazebo world file'
     )
 

@@ -17,11 +17,11 @@ in a different space than the stored reference histograms).
 """
 
 import logging
-import pickle
-from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
+
+from vns.database.reference_db import ReferenceDatabase
 
 try:
     from sklearn.neighbors import NearestNeighbors
@@ -118,25 +118,34 @@ class BoVWIndex:
     @classmethod
     def load(cls, db_path: str) -> "BoVWIndex":
         """Reconstruct the vocabulary + NN index from a ``.vnsdb`` file."""
-        path = Path(db_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Database file not found: {db_path}")
-
-        with open(path, "rb") as f:
-            data = pickle.load(f)
-
-        bovw = data.get("bovw")
-        if not bovw or bovw.get("vocabulary") is None:
+        db = ReferenceDatabase.load(db_path)
+        if db.vocabulary is None:
             raise ValueError(
                 f"Database '{db_path}' contains no BoVW index. Rebuild it with: "
                 "build_reference_database.py --build-vocab"
             )
 
+        ids = list(db.entries.keys())
+        histograms = []
+        for entry_id in ids:
+            histogram = db.entries[entry_id].bovw_histogram
+            if histogram is None:
+                raise ValueError(
+                    f"Database '{db_path}' has an incomplete BoVW index: "
+                    f"entry '{entry_id}' is missing its histogram."
+                )
+            histograms.append(histogram)
+
+        if not histograms:
+            raise ValueError(
+                f"Database '{db_path}' contains no BoVW histograms."
+            )
+
         index = cls(
-            vocabulary=bovw["vocabulary"],
-            ids=bovw["ids"],
-            histograms=bovw["histograms"],
-            metric=bovw.get("metric", "cosine"),
+            vocabulary=db.vocabulary,
+            ids=ids,
+            histograms=np.vstack(histograms).astype(np.float32),
+            metric=db.bovw_metric,
         )
         logger.info(
             "Loaded BoVW index: K=%d words, %d reference histograms, metric=%s",

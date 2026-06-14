@@ -14,7 +14,7 @@ A GNSS-denied navigation system for autonomous drones that uses camera imagery m
 
 - Python 3.10+
 - ROS2 Humble (for simulation)
-- Gazebo Harmonic (for simulation)
+- Gazebo Classic 11 (for simulation)
 - PX4 Autopilot (for simulation)
 
 ## Quick Start
@@ -33,9 +33,6 @@ source .venv/bin/activate  # Linux/macOS
 
 # Install in development mode
 make install-dev
-
-# Or install manually:
-pip install -e ".[dev]"
 ```
 
 ### 2. Verify Installation
@@ -53,7 +50,7 @@ make check
 Copy and customize the configuration file:
 
 ```bash
-cp simulation/config/simulation.yaml config/my_config.yaml
+cp simulation/config/simulation.yaml simulation/config/my_config.yaml
 ```
 
 Key configuration sections:
@@ -68,9 +65,9 @@ Key configuration sections:
 
 1. **Install ROS2 Humble**: Follow [ROS2 installation guide](https://docs.ros.org/en/humble/Installation.html)
 
-2. **Install Gazebo Harmonic**:
+2. **Install Gazebo Classic 11 integration**:
    ```bash
-   sudo apt install ros-humble-ros-gz
+   sudo apt install gazebo ros-humble-gazebo-ros-pkgs
    ```
 
 3. **Install PX4 SITL**:
@@ -78,7 +75,7 @@ Key configuration sections:
    git clone https://github.com/PX4/PX4-Autopilot.git --recursive
    cd PX4-Autopilot
    bash ./Tools/setup/ubuntu.sh
-   make px4_sitl gz_x500
+   make px4_sitl none_iris
    ```
 
 4. **Install QGroundControl** (optional):
@@ -93,20 +90,20 @@ Key configuration sections:
    source /opt/ros/humble/setup.bash
    
    # Launch simulation with GPS enabled
-   ros2 launch simulation/launch/full_simulation.launch.py
+   ros2 launch vns full_simulation.launch.py
    
    # Or launch with GPS disabled (GNSS-denied mode)
-   ros2 launch simulation/launch/full_simulation.launch.py gps_enabled:=false
+   ros2 launch vns full_simulation.launch.py gps_enabled:=false
    ```
 
 2. **Headless mode** (for CI/testing):
    ```bash
-   ros2 launch simulation/launch/full_simulation.launch.py headless:=true
+   ros2 launch vns full_simulation.launch.py headless:=true
    ```
 
 3. **Record data for analysis**:
    ```bash
-   ros2 launch simulation/launch/full_simulation.launch.py record_bag:=true
+   ros2 launch vns full_simulation.launch.py record_bag:=true
    ```
 
 ### Testing GNSS-Denied Scenarios
@@ -138,34 +135,45 @@ db.add_image("path/to/image2.jpg")
 db.save("my_area.vnsdb")
 ```
 
-### Running VNS Standalone
+### Running The Localization Pipeline
 
 ```python
-from vns.core import VNS
 from vns.config import ConfigManager
+from vns.database import ReferenceDatabase
+from vns.vision.localizer import VisualLocalizer
 
 # Load configuration
-config = ConfigManager().load("config/simulation.yaml")
+config = ConfigManager.load("simulation/config/simulation.yaml")
 
-# Initialize VNS
-vns = VNS(config)
+# Load reference database
+db = ReferenceDatabase.load("simulation/database/qau_campus.vnsdb")
 
-# Start processing
-vns.start()
+# Initialize localizer
+localizer = VisualLocalizer(config.data, db)
+
+# Run localization on a camera frame
+result = localizer.localize(frame, altitude=580.0, heading_deg=0.0)
 ```
 
 ### Command Line Interface
 
 ```bash
-# Run VNS with configuration file
-vns --config config/simulation.yaml
+# Validate configuration file
+vns --config simulation/config/simulation.yaml
 
-# Build reference database from images
-vns database build --input ./images --output area.vnsdb
+# Build a BoVW-enabled reference database from an image index YAML
+vns database build --input ./images/database_index.yaml --output area.vnsdb
 
 # Inspect database contents
 vns database inspect area.vnsdb
+
+# Migrate a trusted legacy pickle database to the safe archive format
+vns database migrate --input legacy.vnsdb --output safe.vnsdb
 ```
+
+Existing pickle-era `.vnsdb` files, including older local copies of
+`simulation/database/qau_campus.vnsdb`, must be migrated before they can be
+loaded by default.
 
 ## Project Structure
 
@@ -186,7 +194,7 @@ vns/
 │   ├── worlds/           # Gazebo world files
 │   └── scripts/          # Database preparation tools
 ├── tests/                # Test suite
-└── config/               # Configuration templates
+└── resource/             # ROS 2 package resource marker
 ```
 
 ## Development
@@ -197,11 +205,8 @@ vns/
 # All tests
 make test
 
-# Property-based tests only
-make test-pbt
-
 # With coverage
-pytest tests/ --cov=src/vns
+python3 -m pytest tests/ --cov=src/vns
 ```
 
 ### Code Quality
@@ -220,12 +225,12 @@ make typecheck
 make check
 ```
 
-### Pre-commit Hooks
+### Developer Tooling
 
-Pre-commit hooks are installed automatically with `make install-dev`. They run:
-- Black (formatting)
-- Ruff (linting)
-- MyPy (type checking)
+The development workflow is centered on:
+- Black for formatting
+- Ruff for linting
+- MyPy for type checking
 
 ## Hardware Deployment
 

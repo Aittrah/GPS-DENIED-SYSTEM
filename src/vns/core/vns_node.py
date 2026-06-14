@@ -143,7 +143,11 @@ class VnsNode(Node):
                 f'Loaded reference database: {db.entry_count} entries')
             return db
         except Exception as e:
-            self.get_logger().error(f'Failed to load database: {e}')
+            self.get_logger().error(
+                f'Failed to load database: {e}. '
+                f'Migrate legacy databases with: '
+                f'vns database migrate --input {path} --output {path}'
+            )
             return None
 
     # ── Callbacks ──
@@ -205,7 +209,9 @@ class VnsNode(Node):
         self._last_heading = math.degrees(yaw_rad)
 
     def _on_ground_truth(self, msg: Odometry):
-        self._last_altitude = msg.pose.pose.position.z
+        # Gazebo ground truth is local ENU; convert local Up to MSL altitude.
+        origin_alt = self._geo_origin.get('origin_altitude', 0.0)
+        self._last_altitude = origin_alt + msg.pose.pose.position.z
 
     def _check_gnss_timeout(self):
         self._gnss_monitor.check_timeout()

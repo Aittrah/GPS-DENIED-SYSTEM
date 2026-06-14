@@ -55,7 +55,14 @@ class VnsNode:
         
         # Load database
         logger.info("Loading reference database from %s...", database_path)
-        self.database = ReferenceDatabase.load(database_path)
+        try:
+            self.database = ReferenceDatabase.load(database_path)
+        except ValueError as exc:
+            raise ValueError(
+                f"{exc} Migrate the database with: "
+                f"vns database migrate --input {database_path} "
+                f"--output {database_path}"
+            ) from exc
         logger.info("Database loaded with %d entries.", self.database.entry_count)
         
         # Initialize modules

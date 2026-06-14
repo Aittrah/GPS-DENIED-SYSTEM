@@ -50,7 +50,7 @@ def generate_launch_description():
     config_dir = pkg_dir / 'config'
     database_dir = pkg_dir / 'database'
 
-    world_file = str(worlds_dir / 'vns_test_world.sdf')
+    world_file = str(worlds_dir / 'uav_test_world.sdf')
     drone_sdf = str(models_dir / 'iris_downward_cam' / 'model.sdf')
 
     # ==================== Launch Arguments ====================

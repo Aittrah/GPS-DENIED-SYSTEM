@@ -10,7 +10,6 @@ Covers:
     image with its OWN descriptors must return that image as the #1 candidate.
 """
 
-import pickle
 import subprocess
 import sys
 from pathlib import Path
@@ -23,6 +22,7 @@ SCRIPTS = REPO_ROOT / "simulation" / "scripts"
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(SCRIPTS))
 
+from vns.database.reference_db import ReferenceDatabase  # noqa: E402
 from vns.vision.bovw_retrieval import BoVWIndex, compute_bovw_histogram  # noqa: E402
 import build_reference_database as brd  # noqa: E402
 
@@ -111,15 +111,12 @@ def synthetic_db(tmp_path_factory):
 
 def test_query_own_descriptors_returns_self(synthetic_db):
     index = BoVWIndex.load(str(synthetic_db))
-
-    with open(synthetic_db, "rb") as f:
-        data = pickle.load(f)
-    entries = data["entries"]
-    assert data["bovw"]["vocabulary"] is not None
+    db = ReferenceDatabase.load(str(synthetic_db))
+    assert db.vocabulary is not None
 
     checked = 0
-    for ref_id, e in entries.items():
-        desc = e["descriptors"]
+    for ref_id, entry in db.entries.items():
+        desc = entry.descriptors
         if desc is None or len(desc) == 0:
             continue
         results = index.query(desc, k=5)
@@ -134,11 +131,10 @@ def test_query_own_descriptors_returns_self(synthetic_db):
 def test_vectorized_query_matches_sklearn(synthetic_db):
     """The fast vectorized query() must agree with the sklearn NN index."""
     index = BoVWIndex.load(str(synthetic_db))
-    with open(synthetic_db, "rb") as f:
-        data = pickle.load(f)
+    db = ReferenceDatabase.load(str(synthetic_db))
 
-    for e in data["entries"].values():
-        desc = e["descriptors"]
+    for entry in db.entries.values():
+        desc = entry.descriptors
         if desc is None or len(desc) == 0:
             continue
         fast = index.query(desc, k=5)
@@ -148,11 +144,9 @@ def test_vectorized_query_matches_sklearn(synthetic_db):
             assert df == pytest.approx(dr, abs=1e-5)
 
 
-def test_loading_db_without_bovw_raises(tmp_path):
-    """A legacy DB (no 'bovw' block) must produce a clear error, not a crash."""
-    legacy = tmp_path / "legacy.vnsdb"
-    with open(legacy, "wb") as f:
-        pickle.dump({"version": "1.0.0", "entries": {}}, f)
+def test_loading_safe_db_without_bovw_raises(tmp_path):
+    db = ReferenceDatabase(name="no-bovw")
+    db.save(str(tmp_path / "safe_no_bovw.vnsdb"))
 
     with pytest.raises(ValueError, match="no BoVW index"):
-        BoVWIndex.load(str(legacy))
+        BoVWIndex.load(str(tmp_path / "safe_no_bovw.vnsdb"))

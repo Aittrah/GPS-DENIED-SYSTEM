@@ -1,51 +1,55 @@
 import argparse
+import subprocess
 import sys
 from pathlib import Path
+
 from vns.database.reference_db import ReferenceDatabase
 
+
+def _script_path(name: str) -> Path:
+    return Path(__file__).resolve().parents[2] / "simulation" / "scripts" / name
+
+
 def db_build(args):
-    """Build a reference database from image index YAML."""
+    """Build a reference database using the canonical offline builder."""
     index_path = Path(args.input)
     if not index_path.exists():
         print(f"Error: Input index file not found at {index_path}")
         sys.exit(1)
-        
+
+    script_path = _script_path("build_reference_database.py")
+    if not script_path.exists():
+        print(f"Error: Database builder script not found at {script_path}")
+        sys.exit(1)
+
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--input",
+        str(index_path),
+        "--output",
+        str(args.output),
+        "--max-features",
+        str(args.max_features),
+        "--algorithm",
+        args.algorithm,
+    ]
+    if args.no_vocab:
+        cmd.append("--no-vocab")
+    else:
+        cmd.append("--build-vocab")
+    if args.vocab_size is not None:
+        cmd.extend(["--vocab-size", str(args.vocab_size)])
+    if args.metric is not None:
+        cmd.extend(["--metric", args.metric])
+    if args.random_state is not None:
+        cmd.extend(["--random-state", str(args.random_state)])
+    if args.stats:
+        cmd.append("--stats")
+
     print(f"Building VNS reference database from index: {index_path}")
-    
-    # Import and call database builder logic
     try:
-        from vns.database.reference_db import ReferenceDatabase, DatabaseEntry
-        import yaml
-        
-        with open(index_path, 'r') as f:
-            index_data = yaml.safe_load(f) or {}
-            
-        images = index_data.get('images', [])
-        if not images:
-            print("Error: No images found in the index.")
-            sys.exit(1)
-            
-        db = ReferenceDatabase(
-            name=index_data.get('database', {}).get('name', 'Reference Database'),
-            version=index_data.get('database', {}).get('version', '1.0.0'),
-            algorithm="ORB"
-        )
-        
-        for i, img in enumerate(images):
-            print(f"  [{i+1}/{len(images)}] Indexing {img['id']}...", end="", flush=True)
-            db.add_image(
-                image_path=img['filepath'],
-                latitude=img['latitude'],
-                longitude=img['longitude'],
-                altitude=img['altitude'],
-                heading=img['heading'],
-                image_id=img['id']
-            )
-            print(" Done.")
-            
-        db.save(args.output)
-        print(f"\nSuccessfully built database with {db.entry_count} entries. Saved to: {args.output}")
-        
+        subprocess.run(cmd, check=True)
     except Exception as e:
         print(f"Error building database: {e}")
         sys.exit(1)
@@ -56,9 +60,23 @@ def db_inspect(args):
     if not db_path.exists():
         print(f"Error: Database file not found at {db_path}")
         sys.exit(1)
-        
+
     try:
-        db = ReferenceDatabase.load(str(db_path))
+        db_format = ReferenceDatabase.detect_format(str(db_path))
+        print(f"Format:     {db_format}")
+        if db_format == "legacy_pickle" and not args.trusted_legacy:
+            print(
+                "Legacy pickle database blocked by default. Re-run with "
+                "`--trusted-legacy` to inspect a trusted legacy file or migrate "
+                "it with `vns database migrate`."
+            )
+            sys.exit(1)
+
+        if db_format == "legacy_pickle":
+            db = ReferenceDatabase.load_legacy_trusted(str(db_path))
+        else:
+            db = ReferenceDatabase.load(str(db_path))
+
         print("==================================================")
         print(f"DATABASE INSPECTION: {db_path.name}")
         print("==================================================")
@@ -67,6 +85,7 @@ def db_inspect(args):
         print(f"Created:    {db.created}")
         print(f"Algorithm:  {db.algorithm}")
         print(f"Entries:    {db.entry_count}")
+        print(f"BoVW Index: {'yes' if db.vocabulary is not None else 'no'}")
         print("--------------------------------------------------")
         print("Geographic Bounds:")
         print(f"  Min Latitude:  {db.bounds.min_lat:.6f}")
@@ -93,15 +112,35 @@ def db_inspect(args):
         print(f"Error loading database: {e}")
         sys.exit(1)
 
+
+def db_migrate(args):
+    """Migrate a trusted legacy pickle database to the safe archive format."""
+    input_path = Path(args.input)
+    if not input_path.exists():
+        print(f"Error: Database file not found at {input_path}")
+        sys.exit(1)
+
+    try:
+        db_format = ReferenceDatabase.detect_format(str(input_path))
+        if db_format != "legacy_pickle":
+            print(
+                f"Error: Expected a legacy pickle database, found format "
+                f"'{db_format}'."
+            )
+            sys.exit(1)
+
+        ReferenceDatabase.migrate_legacy_file(str(input_path), args.output)
+        print(f"Migrated trusted legacy database to: {args.output}")
+    except Exception as e:
+        print(f"Error migrating database: {e}")
+        sys.exit(1)
+
 def db_capture(args):
     """Trigger image collection from simulation / camera stream."""
     print("Starting reference image collection...")
     # Invoke capture_reference_images script logic
     try:
-        from subprocess import run
-        import os
-        
-        script_path = Path(__file__).parent.parent.parent / "simulation" / "scripts" / "capture_reference_images.py"
+        script_path = _script_path("capture_reference_images.py")
         cmd = [sys.executable, str(script_path)]
         if args.synthetic:
             cmd.append("--synthetic")
@@ -111,7 +150,7 @@ def db_capture(args):
             cmd.extend(["--output", args.output])
             
         print(f"Running image capture: {' '.join(cmd)}")
-        run(cmd, check=True)
+        subprocess.run(cmd, check=True)
     except Exception as e:
         print(f"Error capturing images: {e}")
         sys.exit(1)
@@ -131,10 +170,26 @@ def main():
     parser_db_build = db_subparsers.add_parser("build", help="Build reference database")
     parser_db_build.add_argument("--input", type=str, required=True, help="Path to image index file (yaml)")
     parser_db_build.add_argument("--output", type=str, required=True, help="Output database file path (.vnsdb)")
+    parser_db_build.add_argument("--max-features", type=int, default=500, help="Maximum ORB features per image")
+    parser_db_build.add_argument("--algorithm", type=str, default="ORB", choices=["ORB"], help="Feature extraction algorithm")
+    parser_db_build.add_argument("--no-vocab", action="store_true", help="Skip BoVW vocabulary build")
+    parser_db_build.add_argument("--vocab-size", type=int, help="BoVW vocabulary size")
+    parser_db_build.add_argument("--metric", type=str, choices=["cosine", "l2"], help="BoVW nearest-neighbor metric")
+    parser_db_build.add_argument("--random-state", type=int, help="BoVW MiniBatchKMeans random seed")
+    parser_db_build.add_argument("--stats", action="store_true", help="Print detailed BoVW statistics after build")
     
     # database inspect sub-command
     parser_db_inspect = db_subparsers.add_parser("inspect", help="Inspect reference database")
     parser_db_inspect.add_argument("database", type=str, help="Path to reference database file (.vnsdb)")
+    parser_db_inspect.add_argument(
+        "--trusted-legacy",
+        action="store_true",
+        help="Explicitly allow inspection of a trusted legacy pickle database",
+    )
+
+    parser_db_migrate = db_subparsers.add_parser("migrate", help="Migrate a trusted legacy pickle database")
+    parser_db_migrate.add_argument("--input", type=str, required=True, help="Legacy pickle database path")
+    parser_db_migrate.add_argument("--output", type=str, required=True, help="Output safe database path (.vnsdb)")
     
     # database capture sub-command
     parser_db_capture = db_subparsers.add_parser("capture", help="Capture reference images")
@@ -142,21 +197,19 @@ def main():
     parser_db_capture.add_argument("--config", type=str, help="Path to reference metadata YAML")
     parser_db_capture.add_argument("--output", type=str, help="Output directory for captured images")
     
-    # standard vns execution
-    parser.add_argument("--config", type=str, help="Run standalone VNS loop with config file")
+    # configuration validation
+    parser.add_argument("--config", type=str, help="Validate and print configuration metadata")
     
     args = parser.parse_args()
     
     if args.config and not args.command:
-        # Run standalone VNS loop (simulated environment)
-        print(f"Initializing VNS standalone execution using configuration: {args.config}")
-        # Connect MAVLink connectively
+        print(f"Validating configuration: {args.config}")
         try:
             from vns.config.config_manager import ConfigManager
             config = ConfigManager.load(args.config)
             db_path = config.get("database.path", "../database/qau_campus.vnsdb")
             print(f"Loaded config. Database path is set to: {db_path}")
-            print("Successfully loaded standalone VNS pipeline configuration.")
+            print("Configuration validation completed successfully.")
         except Exception as e:
             print(f"Error loading configuration: {e}")
             sys.exit(1)
@@ -167,6 +220,8 @@ def main():
             db_build(args)
         elif args.db_command == "inspect":
             db_inspect(args)
+        elif args.db_command == "migrate":
+            db_migrate(args)
         elif args.db_command == "capture":
             db_capture(args)
         else:
