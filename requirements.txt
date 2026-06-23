@@ -1,6 +1,7 @@
 numpy
-opencv-python
+opencv-python-headless
 PyYAML
+pydantic>=2,<3
 requests
 scikit-learn
 mavsdk

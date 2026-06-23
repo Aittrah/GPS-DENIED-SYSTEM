@@ -47,3 +47,53 @@ class TestPreprocessor:
         frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
         out = proc.process(frame)
         assert out.dtype == np.uint8
+
+    def test_undistort_scales_camera_matrix(self, monkeypatch):
+        captured = {}
+
+        def fake_undistort(frame, camera_matrix, distortion):
+            captured["camera_matrix"] = camera_matrix.copy()
+            captured["distortion"] = distortion.copy()
+            return frame
+
+        monkeypatch.setattr(cv2, "undistort", fake_undistort)
+        proc = Preprocessor(
+            target_width=1280,
+            target_height=960,
+            camera_matrix=np.array(
+                [[100.0, 0.0, 50.0], [0.0, 120.0, 40.0], [0.0, 0.0, 1.0]],
+                dtype=np.float32,
+            ),
+            distortion_coefficients=np.array(
+                [0.1, -0.05, 0.0, 0.0, 0.0], dtype=np.float32
+            ),
+            calibration_size=(640, 480),
+            undistort=True,
+        )
+
+        out = proc.process(np.zeros((960, 1280, 3), dtype=np.uint8))
+
+        assert out.shape == (960, 1280)
+        assert captured["camera_matrix"][0, 0] == pytest.approx(200.0)
+        assert captured["camera_matrix"][1, 1] == pytest.approx(240.0)
+        assert captured["camera_matrix"][0, 2] == pytest.approx(100.0)
+        assert captured["camera_matrix"][1, 2] == pytest.approx(80.0)
+
+    def test_zero_distortion_skips_undistort(self, monkeypatch):
+        called = False
+
+        def fake_undistort(frame, camera_matrix, distortion):
+            nonlocal called
+            called = True
+            return frame
+
+        monkeypatch.setattr(cv2, "undistort", fake_undistort)
+        proc = Preprocessor(
+            camera_matrix=np.eye(3, dtype=np.float32),
+            distortion_coefficients=np.zeros(5, dtype=np.float32),
+            undistort=True,
+        )
+
+        proc.process(np.zeros((480, 640, 3), dtype=np.uint8))
+
+        assert called is False

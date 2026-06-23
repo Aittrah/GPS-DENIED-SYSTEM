@@ -1,3 +1,3 @@
-from .mavlink_interface import GpsStatus, MAVLinkInterface
+from .mavlink_interface import GpsStatus, MAVLinkInterface, VehicleStatus
 
-__all__ = ["MAVLinkInterface", "GpsStatus"]
+__all__ = ["GpsStatus", "MAVLinkInterface", "VehicleStatus"]

@@ -7,26 +7,23 @@ sends VISION_POSITION_ESTIMATE to PX4 EKF2 via MAVLink.
 """
 
 import asyncio
-import math
 import threading
 import time
 from pathlib import Path
 
-import numpy as np
 import rclpy
-import yaml
 from cv_bridge import CvBridge
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from sensor_msgs.msg import Image, Imu, NavSatFix
 
-from vns.core.blender import PositionBlender
-from vns.core.gnss_monitor import GnssMonitor, GnssState
+from vns.config import ConfigManager, InvalidConfigError
+from vns.core.runtime import VnsRuntime
 from vns.database.reference_db import ReferenceDatabase
 from vns.interfaces.mavlink_interface import MAVLinkInterface
 from vns.utils.coordinates import geodetic_to_enu
-from vns.vision.localizer import VisualLocalizer
+from vns.utils.logging import setup_logging
 
 
 class VnsNode(Node):
@@ -41,40 +38,28 @@ class VnsNode(Node):
         config_path = self.get_parameter('config_file').value
         db_path = self.get_parameter('database_path').value
 
-        self._cfg = self._load_config(config_path)
+        self._config = self._load_config(config_path)
+        logging_cfg = self._config.model.logging
+        setup_logging(
+            level=logging_cfg.level,
+            log_dir=logging_cfg.log_dir,
+            log_to_console=logging_cfg.log_to_console,
+            log_format=logging_cfg.format,
+            max_size_mb=logging_cfg.max_size_mb,
+            retention_count=logging_cfg.retention_count,
+        )
         self._bridge = CvBridge()
+        self._db = self._load_database(db_path or self._config.model.database.path)
+        self._runtime = VnsRuntime(self._config, database=self._db)
 
-        gnss_cfg = self._cfg.get('gnss', {})
-        nav_cfg = self._cfg.get('navigation', {})
-        geo_cfg = self._cfg.get('geo_reference', {})
-        mav_cfg = self._cfg.get('mavlink', {})
-
-        self._geo_origin = geo_cfg
-
-        self._gnss_monitor = GnssMonitor(
-            degraded_hdop=gnss_cfg.get('degraded_hdop', 5.0),
-            degraded_satellites=gnss_cfg.get('degraded_satellites', 4),
-            denied_timeout_seconds=gnss_cfg.get('denied_timeout_seconds', 2.0),
-        )
-        self._blender = PositionBlender(
-            uncertainty_failsafe_threshold=nav_cfg.get('uncertainty_failsafe_threshold', 10.0),
-            visual_timeout_seconds=nav_cfg.get('visual_timeout_seconds', 300.0),
-            fusion_blend_duration=nav_cfg.get('fusion_blend_duration', 5.0),
-            position_continuity_threshold=nav_cfg.get('position_continuity_threshold', 2.0),
-        )
-
-        self._db = self._load_database(db_path)
-        self._localizer = None
-        if self._db is not None:
-            self._localizer = VisualLocalizer(self._cfg, self._db)
-
-        self._last_gps = None
-        self._last_altitude = 0.0
-        self._last_heading = 0.0
-        self._last_yaw_rad = 0.0
+        ros_cfg = self._config.model.ros
+        sim_cfg = self._config.model.simulation
 
         # MAVLink interface (async) — runs in a background thread
-        self._mavlink = MAVLinkInterface.from_config(mav_cfg)
+        self._mavlink = MAVLinkInterface.from_config(
+            self._config.model.mavlink.model_dump(mode="python")
+        )
+        self._runtime.attach_mavlink(self._mavlink)
         self._loop = asyncio.new_event_loop()
         self._mavlink_thread = threading.Thread(
             target=self._run_async_loop, daemon=True)
@@ -83,15 +68,17 @@ class VnsNode(Node):
             self._mavlink_connect(), self._loop)
 
         self._cam_sub = self.create_subscription(
-            Image, 'camera/image_raw', self._on_image, 10)
+            Image, ros_cfg.camera_topic, self._on_image, 10)
         self._gps_sub = self.create_subscription(
-            NavSatFix, 'gps/fix', self._on_gps, 10)
+            NavSatFix, ros_cfg.gps_topic, self._on_gps, 10)
         self._imu_sub = self.create_subscription(
-            Imu, 'imu/data', self._on_imu, 10)
+            Imu, ros_cfg.imu_topic, self._on_imu, 10)
         self._gt_sub = self.create_subscription(
-            Odometry, 'ground_truth', self._on_ground_truth, 10)
+            Odometry, sim_cfg.ground_truth_topic, self._on_ground_truth, 10)
 
-        self._vision_pub = self.create_publisher(PoseStamped, 'vns/vision_pose', 10)
+        self._vision_pub = self.create_publisher(
+            PoseStamped, ros_cfg.vision_pose_topic, 10
+        )
 
         self._gnss_timer = self.create_timer(1.0, self._check_gnss_timeout)
 
@@ -126,12 +113,18 @@ class VnsNode(Node):
 
     # ── Config / DB ──
 
-    def _load_config(self, path: str) -> dict:
-        if not path or not Path(path).exists():
+    def _load_config(self, path: str) -> ConfigManager:
+        if not path:
+            self.get_logger().warn('Config path not provided, using defaults')
+            return ConfigManager()
+        if not Path(path).exists():
             self.get_logger().warn(f'Config not found: {path}, using defaults')
-            return {}
-        with open(path) as f:
-            return yaml.safe_load(f) or {}
+            return ConfigManager()
+        try:
+            return ConfigManager.from_yaml(path)
+        except InvalidConfigError as exc:
+            self.get_logger().error(f'Invalid config file {path}: {exc}')
+            raise
 
     def _load_database(self, path: str):
         if not path or not Path(path).exists():
@@ -153,22 +146,16 @@ class VnsNode(Node):
     # ── Callbacks ──
 
     def _on_image(self, msg: Image):
-        if self._localizer is None:
+        if self._runtime.localizer is None:
             return
 
         cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        result = self._localizer.localize(
-            cv_image, self._last_altitude, self._last_heading,
-        )
+        result = self._runtime.process_frame(cv_image)
         if not result.success:
             return
 
-        visual_pos = result.pose_geodetic
-        gps_pos = self._last_gps
-        gnss_state = self._gnss_monitor.state
-
-        blended, mode = self._blender.blend(
-            gps_pos, visual_pos, gnss_state, time.time())
+        assert result.blended_pose is not None
+        blended = result.blended_pose
 
         pose_msg = PoseStamped()
         pose_msg.header.stamp = self.get_clock().now().to_msg()
@@ -178,23 +165,26 @@ class VnsNode(Node):
         pose_msg.pose.position.z = blended[2]  # alt
         self._vision_pub.publish(pose_msg)
 
-        origin_lat = self._geo_origin.get('origin_latitude', 0.0)
-        origin_lon = self._geo_origin.get('origin_longitude', 0.0)
-        origin_alt = self._geo_origin.get('origin_altitude', 0.0)
+        geo_origin = self._runtime.geo_origin
+        origin_lat = geo_origin.get('origin_latitude', 0.0)
+        origin_lon = geo_origin.get('origin_longitude', 0.0)
+        origin_alt = geo_origin.get('origin_altitude', 0.0)
         e, n, u = geodetic_to_enu(
             blended[0], blended[1], blended[2],
             origin_lat, origin_lon, origin_alt)
         self._send_vision_estimate(
-            n=n, e=e, d=-u, yaw_rad=result.yaw_rad)
+            n=n, e=e, d=-u, yaw_rad=result.localization.yaw_rad)
 
     def _on_gps(self, msg: NavSatFix):
-        self._last_gps = (msg.latitude, msg.longitude, msg.altitude)
         has_fix = msg.status.status >= 0
         # NavSatFix carries no satellite count, so derive a representative one
         # from the fix flag: a real fix must report healthy (>= degraded_satellites)
         # so the monitor can reach HEALTHY, otherwise GnssMonitor pins to DEGRADED
         # and the blender abandons good GPS for visual navigation.
-        self._gnss_monitor.update(
+        self._runtime.update_gps(
+            latitude=msg.latitude,
+            longitude=msg.longitude,
+            altitude=msg.altitude,
             has_fix=has_fix,
             num_satellites=10 if has_fix else 0,
             hdop=1.0 if has_fix else 99.9,
@@ -202,21 +192,28 @@ class VnsNode(Node):
 
     def _on_imu(self, msg: Imu):
         q = msg.orientation
-        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-        yaw_rad = math.atan2(siny_cosp, cosy_cosp)
-        self._last_yaw_rad = yaw_rad
-        self._last_heading = math.degrees(yaw_rad)
+        self._runtime.update_heading_from_quaternion(
+            w=q.w,
+            x=q.x,
+            y=q.y,
+            z=q.z,
+        )
 
     def _on_ground_truth(self, msg: Odometry):
-        # Gazebo ground truth is local ENU; convert local Up to MSL altitude.
-        origin_alt = self._geo_origin.get('origin_altitude', 0.0)
-        self._last_altitude = origin_alt + msg.pose.pose.position.z
+        self._runtime.update_ground_truth_altitude(msg.pose.pose.position.z)
 
     def _check_gnss_timeout(self):
-        self._gnss_monitor.check_timeout()
+        self._runtime.check_gnss_timeout()
 
     def destroy_node(self):
+        if self._loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(
+                self._mavlink.disconnect(), self._loop
+            )
+            try:
+                future.result(timeout=2.0)
+            except Exception:
+                pass
         self._loop.call_soon_threadsafe(self._loop.stop)
         self._mavlink_thread.join(timeout=2.0)
         super().destroy_node()

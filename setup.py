@@ -15,7 +15,9 @@ def package_data_files(*directories: str):
         for path in source_dir.rglob("*"):
             if path.is_file():
                 target = Path("share") / PACKAGE_NAME / path.parent.relative_to(ROOT)
-                data_files.append((str(target), [str(path)]))
+                data_files.append(
+                    (str(target), [path.relative_to(ROOT).as_posix()])
+                )
     return data_files
 
 setup(
@@ -29,9 +31,9 @@ setup(
     data_files=[
         (
             "share/ament_index/resource_index/packages",
-            [str(ROOT / "resource" / PACKAGE_NAME)],
+            [(Path("resource") / PACKAGE_NAME).as_posix()],
         ),
-        (str(Path("share") / PACKAGE_NAME), [str(ROOT / "package.xml")]),
+        (str(Path("share") / PACKAGE_NAME), ["package.xml"]),
     ] + package_data_files(
         "simulation/launch",
         "simulation/config",
@@ -41,8 +43,9 @@ setup(
     ),
     install_requires=[
         "numpy",
-        "opencv-python",
+        "opencv-python-headless",
         "PyYAML",
+        "pydantic>=2,<3",
         "requests",
         "scikit-learn",
         "mavsdk",

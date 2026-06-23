@@ -42,12 +42,31 @@ class VisualLocalizer:
             "confidence_threshold", 0.6,
         )
         self._top_k: int = retrieval_cfg.get("top_k", 5)
+        camera_matrix = np.array(
+            [
+                [self._camera_config.get("fx", 554.25), 0.0, self._camera_config.get("cx", 320.0)],
+                [0.0, self._camera_config.get("fy", 554.25), self._camera_config.get("cy", 240.0)],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=np.float32,
+        )
+        distortion = np.asarray(
+            self._camera_config.get("distortion", [0.0, 0.0, 0.0, 0.0, 0.0]),
+            dtype=np.float32,
+        )
 
         self._preprocessor = Preprocessor(
             target_width=preproc_cfg.get("target_width", 640),
             target_height=preproc_cfg.get("target_height", 480),
             clahe_clip_limit=preproc_cfg.get("clahe_clip_limit", 2.0),
             clahe_grid_size=preproc_cfg.get("clahe_grid_size", 8),
+            camera_matrix=camera_matrix,
+            distortion_coefficients=distortion,
+            calibration_size=(
+                int(self._camera_config.get("width", 640)),
+                int(self._camera_config.get("height", 480)),
+            ),
+            undistort=preproc_cfg.get("undistort", True),
         )
         self._extractor = FeatureExtractor(
             algorithm=feat_cfg.get("algorithm", "ORB"),

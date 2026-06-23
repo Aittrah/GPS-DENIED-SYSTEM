@@ -32,6 +32,7 @@ preprocessing:
   target_height: 480
   clahe_clip_limit: 2.0
   clahe_grid_size: 8
+  undistort: true
 
 # Matching settings
 matching:
@@ -86,6 +87,9 @@ mavlink:
   connection_string: "udp://:14551"
   system_id: 1
   component_id: 196  # MAV_COMP_ID_VISUAL_INERTIAL_ODOMETRY
+  max_reconnect_attempts: 5
+  reconnect_delay: 2.0
+  connect_timeout: 10.0
 
 # ROS2 topics
 ros:
@@ -98,8 +102,10 @@ ros:
 logging:
   level: "DEBUG"
   log_dir: "./logs"
+  format: "json"
   max_size_mb: 100
   retention_count: 5
+  log_to_console: true
   log_images: true  # Save matched images for debugging
   log_features: true  # Log feature extraction details
 
