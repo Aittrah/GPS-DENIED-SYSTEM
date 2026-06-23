@@ -4,7 +4,14 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    # logging.LoggerAdapter only became subscriptable on Python 3.11; keep the
+    # parameterised base for type checkers while staying importable on 3.10.
+    _LoggerAdapter = logging.LoggerAdapter[logging.Logger]
+else:
+    _LoggerAdapter = logging.LoggerAdapter
 
 
 class JsonFormatter(logging.Formatter):
@@ -25,7 +32,7 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str, separators=(",", ":"))
 
 
-class ContextLoggerAdapter(logging.LoggerAdapter[logging.Logger]):
+class ContextLoggerAdapter(_LoggerAdapter):
     """Logger adapter that keeps structured context attached to log records."""
 
     def process(self, msg: object, kwargs: dict[str, Any]) -> tuple[object, dict[str, Any]]:
