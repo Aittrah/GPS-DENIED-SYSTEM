@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 
 from vns.database.reference_db import DatabaseEntry
-from vns.utils.coordinates import enu_to_geodetic, geodetic_to_enu
+from vns.vision.pose_recovery import displacement_to_pose
 
 logger = logging.getLogger("vns.vision")
 
@@ -99,58 +99,19 @@ class FeatureMatcher:
             lat, lon, alt if successful, or None if matching failed or confidence is too low.
         """
         inliers_query, inliers_ref, confidence = self.match(query_kp, query_des, entry)
-        
+
         if confidence < self.confidence_threshold or len(inliers_query) < self.min_matches:
             return None
-            
-        # Extrinsics and Intrinsics
-        fx = camera_config.get("fx", 554.25)
-        fy = camera_config.get("fy", 554.25)
-        f = (fx + fy) / 2.0
-        
-        # Median pixel displacement
-        du = np.median(inliers_query[:, 0] - inliers_ref[:, 0])
-        dv = np.median(inliers_query[:, 1] - inliers_ref[:, 1])
-        
-        # Altitude above terrain: use drone altitude relative to the reference point altitude
-        # Wait, if drone_altitude is absolute altitude MSL, the altitude relative to the entry terrain is:
-        height = max(1.0, drone_altitude - entry.altitude)
-        
-        # Pixel translation in body frame
-        # Camera is facing straight down, pitch=90 deg.
-        # body_x: right, body_y: forward
-        dx_body = -du * (height / f)
-        dy_body = -dv * (height / f)
-        
-        # Rotate body coordinates to ENU frame using drone's yaw (heading)
-        # yaw (heading) is clockwise from North (deg)
-        yaw_rad = np.radians(drone_heading)
-        cos_y = np.cos(yaw_rad)
-        sin_y = np.sin(yaw_rad)
-        
-        # Forward is Y, Right is X. So at heading 0, E = body_x, N = body_y.
-        de = dx_body * cos_y + dy_body * sin_y
-        dn = -dx_body * sin_y + dy_body * cos_y
-        
-        # Get Reference point ENU coordinates relative to geo_origin
-        origin_lat = geo_origin["origin_latitude"]
-        origin_lon = geo_origin["origin_longitude"]
-        origin_alt = geo_origin["origin_altitude"]
-        
-        ref_e, ref_n, ref_u = geodetic_to_enu(
-            entry.latitude, entry.longitude, entry.altitude,
-            origin_lat, origin_lon, origin_alt
+
+        # Geometry lives in one place (shared with PoseRecovery) so the legacy
+        # and current pipelines can never drift apart.
+        geodetic, _ned, _yaw = displacement_to_pose(
+            inliers_query,
+            inliers_ref,
+            entry,
+            camera_config,
+            drone_altitude,
+            drone_heading,
+            geo_origin,
         )
-        
-        # Add relative offset to get Estimated ENU coordinates
-        est_e = ref_e + de
-        est_n = ref_n + dn
-        est_u = drone_altitude - origin_alt
-        
-        # Convert back to Geodetic coordinates
-        est_lat, est_lon, est_alt = enu_to_geodetic(
-            est_e, est_n, est_u,
-            origin_lat, origin_lon, origin_alt
-        )
-        
-        return est_lat, est_lon, drone_altitude
+        return geodetic

@@ -3,7 +3,7 @@ import logging
 import pickle
 import zipfile
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -78,7 +78,7 @@ class ReferenceDatabase:
     ) -> None:
         self.name = name
         self.version = version
-        self.created = created or datetime.utcnow().isoformat()
+        self.created = created or datetime.now(timezone.utc).isoformat()
         self.algorithm = algorithm
         self.bounds = GeoBounds(90.0, -90.0, 180.0, -180.0)
         self.entries: Dict[str, DatabaseEntry] = {}
@@ -288,7 +288,7 @@ class ReferenceDatabase:
             longitude=longitude,
             altitude=altitude,
             heading=heading,
-            capture_time=datetime.utcnow().isoformat(),
+            capture_time=datetime.now(timezone.utc).isoformat(),
             feature_count=len(kp_array),
             feature_algorithm=self.algorithm,
             keypoints=kp_array,

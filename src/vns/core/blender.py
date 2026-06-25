@@ -1,4 +1,5 @@
 import logging
+import math
 import time
 from typing import Optional, Tuple
 
@@ -34,7 +35,7 @@ class PositionBlender:
         gps_pos: Optional[Tuple[float, float, float]],
         visual_pos: Optional[Tuple[float, float, float]],
         gnss_state: GnssState,
-        current_time: float = None
+        current_time: Optional[float] = None
     ) -> Tuple[Tuple[float, float, float], str]:
         """
         Blend GPS and Visual positions based on GNSS health state.
@@ -42,7 +43,7 @@ class PositionBlender:
             blended_position: (lat, lon, alt)
             mode: "GPS", "BLENDING", "VISION", or "FAILSAFE"
         """
-        now = current_time or time.time()
+        now = time.time() if current_time is None else current_time
         
         # Track last inputs
         if gps_pos is not None:
@@ -51,10 +52,17 @@ class PositionBlender:
         if visual_pos is not None:
             # Position continuity check (outlier rejection)
             if self._last_estimate is not None:
-                # Simple distance in degrees converted to meters approximately
+                # Approximate planar distance in metres. Longitude degrees are
+                # scaled by cos(latitude); without it the east component is
+                # overstated (~17% at QAU's ~33.7 deg latitude), which would
+                # reject valid visual fixes.
                 dlat = visual_pos[0] - self._last_estimate[0]
                 dlon = visual_pos[1] - self._last_estimate[1]
-                dist_m = 111000.0 * (dlat**2 + dlon**2)**0.5
+                mean_lat_rad = math.radians(
+                    (visual_pos[0] + self._last_estimate[0]) / 2.0
+                )
+                dlon_scaled = dlon * math.cos(mean_lat_rad)
+                dist_m = 111000.0 * (dlat**2 + dlon_scaled**2)**0.5
                 if dist_m > self.position_continuity_threshold:
                     logger.warning("Visual position rejected due to discontinuity: %.2fm", dist_m)
                     visual_pos = None

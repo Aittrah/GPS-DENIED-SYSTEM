@@ -132,7 +132,7 @@ class VisualLocalizer:
         logger.debug(
             "Retrieval: %d candidates %s",
             len(candidates),
-            [(cid, cnt) for cid, cnt in candidates],
+            candidates,
         )
 
         # 4 — Geometric verification

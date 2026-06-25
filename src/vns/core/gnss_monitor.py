@@ -1,6 +1,7 @@
 import logging
 import time
 from enum import Enum
+from typing import Optional
 
 logger = logging.getLogger("vns.core")
 
@@ -48,10 +49,10 @@ class GnssMonitor:
         has_fix: bool,
         num_satellites: int,
         hdop: float,
-        timestamp: float = None
+        timestamp: Optional[float] = None
     ) -> GnssState:
         """Update GNSS status and return the current state classification."""
-        current_time = timestamp or time.time()
+        current_time = time.time() if timestamp is None else timestamp
         self._last_update_time = current_time
         
         if not has_fix:
@@ -61,9 +62,9 @@ class GnssMonitor:
             return self._set_state(GnssState.DEGRADED, current_time)
         return self._set_state(GnssState.HEALTHY, current_time)
 
-    def check_timeout(self, current_time: float = None) -> GnssState:
+    def check_timeout(self, current_time: Optional[float] = None) -> GnssState:
         """Check if GPS signal has dropped out based on update timeout."""
-        now = current_time or time.time()
+        now = time.time() if current_time is None else current_time
         if self._current_state != GnssState.DENIED and (now - self._last_update_time) > self.denied_timeout_seconds:
             logger.warning("GNSS update timeout! Declaring GNSS DENIED.")
             return self._set_state(GnssState.DENIED, now)
