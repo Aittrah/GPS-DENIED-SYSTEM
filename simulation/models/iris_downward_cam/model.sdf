@@ -77,6 +77,22 @@
           <izz>1e-05</izz>
         </inertia>
       </inertial>
+      <!-- ROS 2 IMU: libgazebo_ros_imu_sensor MUST live inside a
+           <sensor type="imu"> block. Declared as a model-level plugin it never
+           loads, which is why /vns_drone/imu had no publisher. Publishes
+           sensor_msgs/Imu on /vns_drone/imu (matches simulation.yaml imu_topic). -->
+      <sensor name='imu_sensor' type='imu'>
+        <always_on>true</always_on>
+        <update_rate>250</update_rate>
+        <plugin name='imu_ros_plugin' filename='libgazebo_ros_imu_sensor.so'>
+          <ros>
+            <namespace>/vns_drone</namespace>
+            <remapping>~/out:=imu</remapping>
+          </ros>
+          <frame_name>imu_link</frame_name>
+          <initial_orientation_as_reference>false</initial_orientation_as_reference>
+        </plugin>
+      </sensor>
     </link>
     <joint name='/imu_joint' type='revolute'>
       <child>/imu_link</child>
@@ -248,11 +264,13 @@
             <stddev>0.007</stddev>
           </noise>
         </camera>
+        <!-- gazebo_ros_camera builds its topic from <namespace>/<camera_name>
+             and ignores ~/image_raw remaps, so it publishes
+             /vns_drone/downward_camera/image_raw (matches simulation.yaml
+             camera_topic). -->
         <plugin name='camera_controller' filename='libgazebo_ros_camera.so'>
           <ros>
             <namespace>/vns_drone</namespace>
-            <remapping>~/image_raw:=camera</remapping>
-            <remapping>~/camera_info:=camera_info</remapping>
           </ros>
           <camera_name>downward_camera</camera_name>
           <frame_name>camera_link</frame_name>
@@ -550,26 +568,22 @@
 
     <!-- ============== ROS 2 BRIDGE PLUGINS (gazebo_ros) ============== -->
 
-    <!-- IMU -> /vns_drone/imu (sensor_msgs/Imu) -->
-    <plugin name='imu_ros_plugin' filename='libgazebo_ros_imu_sensor.so'>
-      <ros>
-        <namespace>/vns_drone</namespace>
-        <remapping>~/out:=imu</remapping>
-      </ros>
-      <body_name>/imu_link</body_name>
-      <update_rate>250</update_rate>
-      <gaussian_noise>0.01</gaussian_noise>
-    </plugin>
+    <!-- IMU ROS 2 bridge is now inside <sensor type="imu"> on /imu_link above
+         (a model-level libgazebo_ros_imu_sensor never loads). -->
 
     <!-- GPS ROS 2 bridge is now inside <sensor type="gps"> on gps_link above.
          Raw data publishes to /vns_drone/gps_raw; the gps_gate_node relays
          to /vns_drone/gps when GPS is enabled and silences it for denial. -->
 
-    <!-- Ground truth -> /vns_drone/ground_truth (nav_msgs/Odometry) -->
+    <!-- Ground truth -> /vns_drone/ground_truth (nav_msgs/Odometry).
+         libgazebo_ros_p3d advertises the RELATIVE topic 'odom', so the remap key
+         is 'odom' (not '~/odom' or '~/out'). The old '~/out' remap was a no-op
+         and it published /vns_drone/odom. Verified: 'odom:=ground_truth' yields
+         /vns_drone/ground_truth. -->
     <plugin name='p3d_plugin' filename='libgazebo_ros_p3d.so'>
       <ros>
         <namespace>/vns_drone</namespace>
-        <remapping>~/out:=ground_truth</remapping>
+        <remapping>odom:=ground_truth</remapping>
       </ros>
       <body_name>base_link</body_name>
       <frame_name>world</frame_name>

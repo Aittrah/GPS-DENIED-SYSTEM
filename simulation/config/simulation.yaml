@@ -92,8 +92,10 @@ mavlink:
   connect_timeout: 10.0
 
 # ROS2 topics
+# These are the absolute topic names the iris_downward_cam SDF plugins actually
+# publish; the node subscribes to them directly, so no launch remaps are needed.
 ros:
-  camera_topic: "/vns_drone/camera"
+  camera_topic: "/vns_drone/downward_camera/image_raw"
   gps_topic: "/vns_drone/gps"
   imu_topic: "/vns_drone/imu"
   vision_pose_topic: "/vns/vision_pose"
