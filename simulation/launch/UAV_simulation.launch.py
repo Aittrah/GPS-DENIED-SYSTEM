@@ -42,6 +42,14 @@ def generate_launch_description():
 
     drone_sdf = str(models_dir / 'iris_downward_cam' / 'model.sdf')
 
+    # vns_node runs under the .venv-run interpreter (numpy 1.26.x) so ROS Humble's
+    # cv_bridge (built for numpy 1.x) does not segfault on the first camera frame.
+    # The venv has --system-site-packages, so rclpy / ROS msgs resolve from the
+    # sourced /opt/ros/humble overlay while numpy 1.26.x shadows user-site 2.x.
+    # Absolute path: under `ros2 launch vns ...` this file runs from the install/
+    # share dir, so the venv cannot be derived relative to __file__.
+    venv_python = '/home/hp/GPS-DENIED-SYSTEM/.venv-run/bin/python3'
+
     # ==================== Launch Arguments ====================
 
     gps_enabled_arg = DeclareLaunchArgument(
@@ -76,6 +84,10 @@ def generate_launch_description():
         'GAZEBO_MODEL_PATH',
         str(models_dir) + ':' + '${GAZEBO_MODEL_PATH}'
     )
+
+    # Disable the online model database so gzserver does not block on startup
+    # trying to fetch models from models.gazebosim.org (slow/offline -> hang).
+    gazebo_model_db = SetEnvironmentVariable('GAZEBO_MODEL_DATABASE_URI', '')
 
     # ==================== Gazebo Classic ====================
 
@@ -129,16 +141,15 @@ def generate_launch_description():
                 package='vns',
                 executable='vns_node',
                 name='vns_node',
+                prefix=[venv_python],  # see venv_python note above (numpy/cv_bridge)
                 parameters=[{
                     'config_file': LaunchConfiguration('vns_config'),
                     'gps_enabled': LaunchConfiguration('gps_enabled'),
                     'simulation_mode': True,
                 }],
-                remappings=[
-                    ('camera/image_raw', '/vns_drone/camera'),
-                    ('gps/fix', '/vns_drone/gps'),
-                    ('imu/data', '/vns_drone/imu'),
-                ],
+                # No remappings: the node subscribes to the absolute topic names
+                # in simulation.yaml (ros.*), which already match what the SDF
+                # plugins publish. (Relative-key remaps here would be no-ops.)
                 output='screen'
             )
         ]
@@ -153,6 +164,7 @@ def generate_launch_description():
 
         # Environment
         gazebo_model_path,
+        gazebo_model_db,
 
         # Gazebo
         gzserver,

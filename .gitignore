@@ -19,5 +19,9 @@ assign.ipynb
 # Virtual environments
 .venv*/
 
+# ROS 2 / colcon build artifacts
+install/
+log/
+
 # Claude Code local settings
 .claude/settings.local.json

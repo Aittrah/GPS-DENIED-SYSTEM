@@ -48,10 +48,22 @@ def generate_launch_description():
     worlds_dir = pkg_dir / 'worlds'
     models_dir = pkg_dir / 'models'
     config_dir = pkg_dir / 'config'
-    database_dir = pkg_dir / 'database'
+    # The reference database is NOT installed via data_files, so reference it from
+    # the source tree by absolute path (works whether the launch runs from source
+    # or from the install/ share dir under `ros2 launch vns ...`).
+    database_dir = Path('/home/hp/GPS-DENIED-SYSTEM/simulation/database')
 
     world_file = str(worlds_dir / 'uav_test_world.sdf')
     drone_sdf = str(models_dir / 'iris_downward_cam' / 'model.sdf')
+
+    # vns_node runs under the .venv-run interpreter (numpy 1.26.x) so ROS Humble's
+    # cv_bridge (built for numpy 1.x) does not segfault on the first camera frame.
+    # The venv was created with --system-site-packages, so rclpy and the ROS
+    # message packages resolve from the sourced /opt/ros/humble overlay while the
+    # venv's numpy 1.26.x shadows the user-site numpy 2.x. Absolute path: under
+    # `ros2 launch vns ...` this file runs from the install/ share dir, so the
+    # venv cannot be derived relative to __file__.
+    venv_python = '/home/hp/GPS-DENIED-SYSTEM/.venv-run/bin/python3'
 
     # ==================== Launch Arguments ====================
 
@@ -98,6 +110,10 @@ def generate_launch_description():
         'GAZEBO_MODEL_PATH',
         str(models_dir) + ':' + '${GAZEBO_MODEL_PATH}'
     )
+
+    # Disable the online model database so gzserver does not block on startup
+    # trying to fetch models from models.gazebosim.org (slow/offline -> hang).
+    gazebo_model_db = SetEnvironmentVariable('GAZEBO_MODEL_DATABASE_URI', '')
 
     # ==================== Gazebo Classic Simulation ====================
 
@@ -192,17 +208,15 @@ def generate_launch_description():
                 package='vns',
                 executable='vns_node',
                 name='vns_node',
+                prefix=[venv_python],  # see venv_python note above (numpy/cv_bridge)
                 parameters=[{
                     'config_file': str(config_dir / 'simulation.yaml'),
                     'database_path': str(database_dir / 'qau_campus.vnsdb'),
                     'simulation_mode': True,
                 }],
-                remappings=[
-                    ('camera/image_raw', '/vns_drone/camera'),
-                    ('gps/fix', '/vns_drone/gps'),
-                    ('imu/data', '/vns_drone/imu'),
-                    ('ground_truth', '/vns_drone/ground_truth'),
-                ],
+                # No remappings: the node subscribes to the absolute topic names
+                # in simulation.yaml (ros.*), which already match what the SDF
+                # plugins publish. (Relative-key remaps here would be no-ops.)
                 output='screen'
             )
         ]
@@ -219,7 +233,7 @@ def generate_launch_description():
     bag_record = ExecuteProcess(
         cmd=[
             'ros2', 'bag', 'record',
-            '/vns_drone/camera',
+            '/vns_drone/downward_camera/image_raw',
             '/vns_drone/gps_raw',
             '/vns_drone/gps',
             '/vns_drone/imu',
@@ -257,6 +271,7 @@ def generate_launch_description():
 
         # Environment
         gazebo_model_path,
+        gazebo_model_db,
 
         # Gazebo
         gzserver,
