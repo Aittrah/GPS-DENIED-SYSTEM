@@ -1,0 +1,151 @@
+<?xml version="1.0" ?>
+<!--
+  VNS Localization Test World - QAU Campus, Islamabad, Pakistan
+
+  A purpose-built, deterministic world for verifying GNSS-denied visual
+  localization. Unlike uav_test_world.sdf, this world has NO 3D landmarks
+  (buildings, trees, towers): those poke above the flat ground texture, occlude
+  and shadow the reference tiles, and were one cause of failed matches. Here the
+  downward camera sees only the clean georeferenced campus-map texture.
+
+  A static camera observer is parked at 240 m above the world origin (grid_center)
+  looking straight down. At 240 m the 60-deg-FOV camera footprint (~277 m) maps one
+  278 m grid tile onto the full 640x480 frame, so the localizer gets a pristine,
+  strong match and publishes a pose fix; no PX4, no motors, no free-fall.
+
+  The camera publishes on /vns_drone/downward_camera/image_raw (same as the
+  iris_downward_cam drone), which is exactly the topic vns_node subscribes to per
+  simulation.yaml (ros.camera_topic) -- no remap needed.
+
+  Run (headless): start gzserver on this world with the gazebo_ros init and
+  factory system plugins (libgazebo_ros_init.so, libgazebo_ros_factory.so), then
+  optionally attach gzclient for the GUI.
+-->
+<sdf version="1.9">
+  <world name="qau_localization_test">
+
+    <!-- World origin == reference-database centre (lat 33.7470, lon 73.1370). -->
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <latitude_deg>33.7470</latitude_deg>
+      <longitude_deg>73.1370</longitude_deg>
+      <elevation>550</elevation>
+      <heading_deg>0</heading_deg>
+    </spherical_coordinates>
+
+    <physics type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+
+    <!-- Bright, even lighting so the texture's features detect cleanly. -->
+    <scene>
+      <ambient>0.8 0.8 0.8 1</ambient>
+      <background>0.6 0.75 0.9 1</background>
+      <shadows>false</shadows>
+    </scene>
+
+    <light type="directional" name="sun">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 100 0 0 0</pose>
+      <diffuse>0.9 0.9 0.85 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>0 0 -1</direction>
+    </light>
+
+    <!-- Ground plane + georeferenced campus-map texture (identical to
+         uav_test_world.sdf). The textured box is mapped 1:1 onto a 600x600 m
+         area centred on the origin. -->
+    <model name="qau_ground">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>1000 1000</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>1000 1000</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.35 0.45 0.3 1</ambient>
+            <diffuse>0.4 0.5 0.35 1</diffuse>
+          </material>
+        </visual>
+        <visual name="campus_map">
+          <pose>0 0 0.02 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>600 600 0.04</size>
+            </box>
+          </geometry>
+          <material>
+            <script>
+              <uri>file:///home/hp/GPS-DENIED-SYSTEM/simulation/worlds/materials/scripts</uri>
+              <uri>file:///home/hp/GPS-DENIED-SYSTEM/simulation/worlds/materials/textures</uri>
+              <name>QAUCampus/Ground</name>
+            </script>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ====================================================== -->
+    <!-- STATIC DOWNWARD-CAMERA OBSERVER over grid_center @ 240 m -->
+    <!-- ====================================================== -->
+    <model name="vns_observer">
+      <static>true</static>
+      <!-- Park the camera body at the world origin, 240 m up. -->
+      <pose>0 0 240 0 0 0</pose>
+      <link name="camera_link">
+        <!-- Pitch +90 deg so the camera optical axis (+X) points straight down. -->
+        <pose>0 0 0 0 1.5708 0</pose>
+        <visual name="camera_visual">
+          <geometry><box><size>0.4 0.4 0.4</size></box></geometry>
+          <material>
+            <ambient>0.8 0.1 0.1 1</ambient>
+            <diffuse>0.9 0.1 0.1 1</diffuse>
+          </material>
+        </visual>
+        <sensor name="downward_camera" type="camera">
+          <always_on>true</always_on>
+          <update_rate>10</update_rate>
+          <visualize>true</visualize>
+          <camera name="vns_cam">
+            <horizontal_fov>1.047</horizontal_fov>
+            <image>
+              <width>640</width>
+              <height>480</height>
+              <format>R8G8B8</format>
+            </image>
+            <clip>
+              <near>0.1</near>
+              <far>500</far>
+            </clip>
+          </camera>
+          <!-- gazebo_ros_camera builds its topic from <namespace>/<camera_name>
+               and ignores ~/image_raw remaps, so we publish on the SAME topic as
+               the iris_downward_cam drone: /vns_drone/downward_camera/image_raw.
+               vns_node subscribes to /vns_drone/camera, so remap at launch:
+               -r /vns_drone/camera:=/vns_drone/downward_camera/image_raw -->
+          <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
+            <ros>
+              <namespace>/vns_drone</namespace>
+            </ros>
+            <camera_name>downward_camera</camera_name>
+            <frame_name>camera_link</frame_name>
+          </plugin>
+        </sensor>
+      </link>
+    </model>
+
+  </world>
+</sdf>

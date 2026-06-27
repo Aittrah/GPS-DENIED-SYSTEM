@@ -60,6 +60,7 @@
             </plane>
           </geometry>
         </collision>
+        <!-- Base plane visual for terrain beyond the textured campus map -->
         <visual name="visual">
           <geometry>
             <plane>
@@ -70,6 +71,25 @@
           <material>
             <ambient>0.35 0.45 0.3 1</ambient>
             <diffuse>0.4 0.5 0.35 1</diffuse>
+          </material>
+        </visual>
+        <!-- QAU campus satellite/reference-map texture (600x600 m, georeferenced
+             mosaic of the VNS reference-database tiles; world origin == DB center).
+             Mapped 1:1 onto a thin box so the downward camera sees terrain that
+             matches the reference tiles. -->
+        <visual name="campus_map">
+          <pose>0 0 0.02 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>600 600 0.04</size>
+            </box>
+          </geometry>
+          <material>
+            <script>
+              <uri>file:///home/hp/GPS-DENIED-SYSTEM/simulation/worlds/materials/scripts</uri>
+              <uri>file:///home/hp/GPS-DENIED-SYSTEM/simulation/worlds/materials/textures</uri>
+              <name>QAUCampus/Ground</name>
+            </script>
           </material>
         </visual>
       </link>

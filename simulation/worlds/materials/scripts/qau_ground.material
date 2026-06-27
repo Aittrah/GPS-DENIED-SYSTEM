@@ -1,0 +1,27 @@
+// Ogre material for the QAU campus ground texture.
+// The texture (materials/textures/qau_campus_map.png) is a georeferenced
+// mosaic of the VNS reference-database tiles, mapped 1:1 onto the 600x600 m
+// ground box in uav_test_world.sdf.
+//
+// Rendered UNLIT (lighting off): scene lighting was overexposing the texture,
+// blowing the low-contrast grid lines and labels to white and leaving only the
+// saturated ORB blobs -- which dropped the downward camera's match below the
+// confidence threshold. Unlit rendering shows the texture at its true pixel
+// values so the camera sees what the reference database was built from.
+material QAUCampus/Ground
+{
+  receive_shadows off
+  technique
+  {
+    pass
+    {
+      lighting off
+
+      texture_unit
+      {
+        texture qau_campus_map.png
+        filtering trilinear
+      }
+    }
+  }
+}
