@@ -108,14 +108,18 @@ Key configuration sections:
 
 ### Testing GNSS-Denied Scenarios
 
-The simulation supports several GPS denial scenarios configured in `simulation/config/gps_control.yaml`:
+The current runtime behavior is implemented by `simulation/scripts/gps_gate_node.py`.
+It provides a simple on/off GPS gate for simulation:
 
-| Scenario | Description |
-|----------|-------------|
-| `complete_denial` | Total GPS loss |
-| `degraded_signal` | High HDOP, few satellites |
-| `intermittent` | Periodic GPS dropouts |
-| `gradual_degradation` | Progressive signal loss |
+| Mode | How to trigger | Implemented behavior |
+|------|----------------|----------------------|
+| GPS enabled | Default launch, or `ros2 service call /vns/set_gps_enabled std_srvs/srv/SetBool "{data: true}"` | Relays `/vns_drone/gps_raw` to `/vns_drone/gps` |
+| GPS denied | `ros2 launch vns full_simulation.launch.py gps_enabled:=false`, or `ros2 service call /vns/set_gps_enabled std_srvs/srv/SetBool "{data: false}"` | Suppresses `/vns_drone/gps` output entirely |
+
+`simulation/config/gps_control.yaml` still contains named scenario profiles such as
+`complete_denial`, `degraded_signal`, `intermittent`, and `gradual_degradation`,
+but those profiles are not currently implemented by the runtime GPS gate and should
+be treated as future work rather than available simulation modes.
 
 ## Basic Usage
 
