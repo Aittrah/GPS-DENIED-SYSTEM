@@ -33,12 +33,15 @@ class VnsNode(Node):
 
         self.declare_parameter('config_file', '')
         self.declare_parameter('database_path', '')
+        self.declare_parameter('camera_topic', '')
         self.declare_parameter('simulation_mode', True)
 
         config_path = self.get_parameter('config_file').value
         db_path = self.get_parameter('database_path').value
 
         self._config = self._load_config(config_path)
+        mavlink_config = self._config.model.mavlink.model_dump(mode="python")
+        self.declare_parameter('mavlink_enabled', mavlink_config.get('enabled', True))
         logging_cfg = self._config.model.logging
         setup_logging(
             level=logging_cfg.level,
@@ -54,21 +57,28 @@ class VnsNode(Node):
 
         ros_cfg = self._config.model.ros
         sim_cfg = self._config.model.simulation
+        camera_topic = self.get_parameter('camera_topic').value or ros_cfg.camera_topic
+        self._mavlink_enabled = bool(self.get_parameter('mavlink_enabled').value)
+        self._mavlink: MAVLinkInterface | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._mavlink_thread: threading.Thread | None = None
 
         # MAVLink interface (async) — runs in a background thread
-        self._mavlink = MAVLinkInterface.from_config(
-            self._config.model.mavlink.model_dump(mode="python")
-        )
-        self._runtime.attach_mavlink(self._mavlink)
-        self._loop = asyncio.new_event_loop()
-        self._mavlink_thread = threading.Thread(
-            target=self._run_async_loop, daemon=True)
-        self._mavlink_thread.start()
-        asyncio.run_coroutine_threadsafe(
-            self._mavlink_connect(), self._loop)
+        if self._mavlink_enabled:
+            mavlink_config['enabled'] = self._mavlink_enabled
+            self._mavlink = MAVLinkInterface.from_config(mavlink_config)
+            self._runtime.attach_mavlink(self._mavlink)
+            self._loop = asyncio.new_event_loop()
+            self._mavlink_thread = threading.Thread(
+                target=self._run_async_loop, daemon=True)
+            self._mavlink_thread.start()
+            asyncio.run_coroutine_threadsafe(
+                self._mavlink_connect(), self._loop)
+        else:
+            self.get_logger().info('MAVLink disabled for this run')
 
         self._cam_sub = self.create_subscription(
-            Image, ros_cfg.camera_topic, self._on_image, 10)
+            Image, camera_topic, self._on_image, 10)
         self._gps_sub = self.create_subscription(
             NavSatFix, ros_cfg.gps_topic, self._on_gps, 10)
         self._imu_sub = self.create_subscription(
@@ -87,10 +97,13 @@ class VnsNode(Node):
     # ── Async helpers ──
 
     def _run_async_loop(self):
+        assert self._loop is not None
         asyncio.set_event_loop(self._loop)
         self._loop.run_forever()
 
     async def _mavlink_connect(self):
+        if self._mavlink is None:
+            return
         try:
             await self._mavlink.connect()
             self.get_logger().info('MAVLink connected')
@@ -101,6 +114,8 @@ class VnsNode(Node):
         self, n: float, e: float, d: float, yaw_rad: float
     ):
         """Schedule async send of VISION_POSITION_ESTIMATE to PX4."""
+        if not self._mavlink_enabled or self._mavlink is None or self._loop is None:
+            return
         time_usec = int(time.time() * 1e6)
         asyncio.run_coroutine_threadsafe(
             self._mavlink.send_vision_position_estimate(
@@ -206,7 +221,7 @@ class VnsNode(Node):
         self._runtime.check_gnss_timeout()
 
     def destroy_node(self):
-        if self._loop.is_running():
+        if self._mavlink is not None and self._loop is not None and self._loop.is_running():
             future = asyncio.run_coroutine_threadsafe(
                 self._mavlink.disconnect(), self._loop
             )
@@ -214,8 +229,9 @@ class VnsNode(Node):
                 future.result(timeout=2.0)
             except Exception:
                 pass
-        self._loop.call_soon_threadsafe(self._loop.stop)
-        self._mavlink_thread.join(timeout=2.0)
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        if self._mavlink_thread is not None:
+            self._mavlink_thread.join(timeout=2.0)
         super().destroy_node()
 
 

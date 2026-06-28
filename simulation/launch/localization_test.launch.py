@@ -110,6 +110,7 @@ def generate_launch_description():
                 parameters=[{
                     'config_file': LaunchConfiguration('vns_config'),
                     'database_path': str(database_dir / 'qau_campus.vnsdb'),
+                    'mavlink_enabled': False,
                     'simulation_mode': True,
                 }],
                 output='screen',

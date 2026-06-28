@@ -1,3 +1,6 @@
+import asyncio
+import logging
+
 from vns.interfaces.mavlink_interface import GpsStatus, MAVLinkInterface
 
 
@@ -34,6 +37,7 @@ def test_from_config_applies_retry_settings() -> None:
             "max_reconnect_attempts": 0,
             "reconnect_delay": 1.5,
             "connect_timeout": 4.0,
+            "enabled": False,
         }
     )
 
@@ -43,3 +47,29 @@ def test_from_config_applies_retry_settings() -> None:
     assert interface._max_reconnect_attempts == 0
     assert interface._reconnect_delay == 1.5
     assert interface._connect_timeout == 4.0
+    assert interface._enabled is False
+
+
+def test_disabled_interface_skips_connect_without_mavsdk() -> None:
+    interface = MAVLinkInterface(enabled=False)
+
+    assert asyncio.run(interface.connect()) is False
+    assert interface.is_connected is False
+
+
+def test_disabled_interface_suppresses_disconnected_send_warning(caplog) -> None:
+    interface = MAVLinkInterface(enabled=False)
+
+    with caplog.at_level(logging.WARNING, logger="vns.interfaces.mavlink_interface"):
+        result = asyncio.run(
+            interface.send_vision_position_estimate(
+                x_m=1.0,
+                y_m=2.0,
+                z_m=3.0,
+                yaw_rad=0.5,
+                time_usec=123456,
+            )
+        )
+
+    assert result is False
+    assert "Cannot send vision estimate: not connected" not in caplog.text

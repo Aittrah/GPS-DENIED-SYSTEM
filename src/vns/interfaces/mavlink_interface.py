@@ -86,6 +86,7 @@ class MAVLinkInterface:
         max_reconnect_attempts: int = 5,
         reconnect_delay: float = 2.0,
         connect_timeout: float = 10.0,
+        enabled: bool = True,
     ) -> None:
         self._connection_string = connection_string
         self._system_id = system_id
@@ -93,6 +94,7 @@ class MAVLinkInterface:
         self._max_reconnect_attempts = max_reconnect_attempts
         self._reconnect_delay = reconnect_delay
         self._connect_timeout = connect_timeout
+        self._enabled = enabled
 
         self._system: Optional["System"] = None
         self._connected = False
@@ -118,6 +120,12 @@ class MAVLinkInterface:
             ImportError: if mavsdk is not installed.
             ConnectionError: if the connection or handshake fails.
         """
+        if not self._enabled:
+            self._shutdown = True
+            self._connected = False
+            self._status.connected = False
+            self._status.timestamp = time.time()
+            return False
         if not MAVSDK_AVAILABLE:
             raise ImportError(
                 "mavsdk is not installed. Run: pip install mavsdk"
@@ -181,6 +189,8 @@ class MAVLinkInterface:
 
         Returns True on success, False if not connected.
         """
+        if not self._enabled:
+            return False
         if not self._connected or self._system is None:
             logger.warning("Cannot send vision estimate: not connected")
             return False
@@ -229,6 +239,7 @@ class MAVLinkInterface:
             max_reconnect_attempts=config.get("max_reconnect_attempts", 5),
             reconnect_delay=config.get("reconnect_delay", 2.0),
             connect_timeout=config.get("connect_timeout", 10.0),
+            enabled=config.get("enabled", True),
         )
 
     # ------------------------------------------------------------------
@@ -280,6 +291,8 @@ class MAVLinkInterface:
             ) from exc
 
     def _ensure_background_tasks(self) -> None:
+        if not self._enabled:
+            return
         if self._gps_task is None or self._gps_task.done():
             self._gps_task = asyncio.create_task(
                 self._gps_loop(), name="mavlink_gps_stream"
