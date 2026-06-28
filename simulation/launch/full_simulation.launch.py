@@ -26,18 +26,59 @@ Notes for Gazebo Classic:
 """
 
 from pathlib import Path
+import tempfile
 
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     ExecuteProcess,
     LogInfo,
+    OpaqueFunction,
     SetEnvironmentVariable,
     TimerAction,
 )
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+from vns.utils.camera_topic import (
+    DEFAULT_CAMERA_TOPIC,
+    render_sdf_with_camera_topic,
+)
+
+
+def _spawn_drone(context, *, drone_sdf: str):
+    camera_topic = LaunchConfiguration('camera_topic').perform(context)
+    resolved_sdf = drone_sdf
+
+    if camera_topic != DEFAULT_CAMERA_TOPIC:
+        rendered_sdf = render_sdf_with_camera_topic(
+            Path(drone_sdf).read_text(encoding='utf-8'),
+            camera_topic,
+        )
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            encoding='utf-8',
+            suffix='.sdf',
+            prefix='iris_downward_cam_',
+            delete=False,
+        ) as handle:
+            handle.write(rendered_sdf)
+            resolved_sdf = handle.name
+
+    return [
+        Node(
+            package='gazebo_ros',
+            executable='spawn_entity.py',
+            name='spawn_iris',
+            arguments=[
+                '-entity', 'iris_downward_cam',
+                '-file', resolved_sdf,
+                '-x', '0', '-y', '0', '-z', '1',
+            ],
+            output='screen',
+        )
+    ]
 
 
 def generate_launch_description():
@@ -103,6 +144,12 @@ def generate_launch_description():
         description='Record ROS bag for analysis'
     )
 
+    camera_topic_arg = DeclareLaunchArgument(
+        'camera_topic',
+        default_value=DEFAULT_CAMERA_TOPIC,
+        description='ROS image topic shared by the Gazebo camera and vns_node'
+    )
+
     # ==================== Environment Setup ====================
 
     # Gazebo Classic uses GAZEBO_MODEL_PATH (not GZ_SIM_RESOURCE_PATH)
@@ -140,17 +187,7 @@ def generate_launch_description():
     spawn_drone = TimerAction(
         period=4.0,
         actions=[
-            Node(
-                package='gazebo_ros',
-                executable='spawn_entity.py',
-                name='spawn_iris',
-                arguments=[
-                    '-entity', 'iris_downward_cam',
-                    '-file', drone_sdf,
-                    '-x', '0', '-y', '0', '-z', '1',
-                ],
-                output='screen',
-            )
+            OpaqueFunction(function=_spawn_drone, kwargs={'drone_sdf': drone_sdf})
         ]
     )
 
@@ -212,11 +249,11 @@ def generate_launch_description():
                 parameters=[{
                     'config_file': str(config_dir / 'simulation.yaml'),
                     'database_path': str(database_dir / 'qau_campus.vnsdb'),
+                    'camera_topic': LaunchConfiguration('camera_topic'),
                     'simulation_mode': True,
                 }],
-                # No remappings: the node subscribes to the absolute topic names
-                # in simulation.yaml (ros.*), which already match what the SDF
-                # plugins publish. (Relative-key remaps here would be no-ops.)
+                # camera_topic keeps the Gazebo publisher and node subscriber
+                # aligned without ROS remap rules.
                 output='screen'
             )
         ]
@@ -233,7 +270,7 @@ def generate_launch_description():
     bag_record = ExecuteProcess(
         cmd=[
             'ros2', 'bag', 'record',
-            '/vns_drone/downward_camera/image_raw',
+            LaunchConfiguration('camera_topic'),
             '/vns_drone/gps_raw',
             '/vns_drone/gps',
             '/vns_drone/imu',
@@ -268,6 +305,7 @@ def generate_launch_description():
         qgc_arg,
         rviz_arg,
         record_arg,
+        camera_topic_arg,
 
         # Environment
         gazebo_model_path,

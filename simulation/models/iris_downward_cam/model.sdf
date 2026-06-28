@@ -265,9 +265,9 @@
           </noise>
         </camera>
         <!-- gazebo_ros_camera builds its topic from <namespace>/<camera_name>
-             and ignores ~/image_raw remaps, so it publishes
-             /vns_drone/downward_camera/image_raw (matches simulation.yaml
-             camera_topic). -->
+             and ignores ~/image_raw remaps. These default tags are the launch
+             substitution points used when camera_topic overrides the published
+             image topic. -->
         <plugin name='camera_controller' filename='libgazebo_ros_camera.so'>
           <ros>
             <namespace>/vns_drone</namespace>
