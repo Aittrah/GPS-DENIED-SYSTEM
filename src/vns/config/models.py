@@ -62,6 +62,7 @@ class MatchingConfig(VnsBaseModel):
 
 class RetrievalBoVWConfig(VnsBaseModel):
     enabled: bool = True
+    fallback_to_flann: bool = False
     vocab_size: int = 1000
     metric: Literal["cosine", "l2"] = "cosine"
     random_state: int = 42
@@ -72,8 +73,39 @@ class RetrievalBoVWConfig(VnsBaseModel):
 
 class RetrievalConfig(VnsBaseModel):
     top_k: int = 5
+    mode: Literal["flann", "bovw"] = "flann"
     backend: str = "flann_lsh"
     bovw: RetrievalBoVWConfig = Field(default_factory=RetrievalBoVWConfig)
+
+    @staticmethod
+    def _normalize_mode(value: object) -> str:
+        if value is None:
+            return "flann"
+
+        normalized = str(value).strip().lower()
+        if normalized in {"flann", "flann_lsh"}:
+            return "flann"
+        if normalized == "bovw":
+            return "bovw"
+        raise ValueError(
+            "retrieval mode must be one of: 'flann', 'flann_lsh', or 'bovw'."
+        )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_backend_fields(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+
+        normalized = dict(data)
+        mode = normalized.get("mode")
+        backend = normalized.get("backend")
+        normalized["mode"] = cls._normalize_mode(mode if mode is not None else backend)
+        if backend is None:
+            normalized["backend"] = (
+                "bovw" if normalized["mode"] == "bovw" else "flann_lsh"
+            )
+        return normalized
 
 
 class GnssConfig(VnsBaseModel):

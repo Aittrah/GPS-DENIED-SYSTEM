@@ -1,10 +1,14 @@
 """Shared fixtures for VNS vision pipeline tests."""
 
+from copy import deepcopy
+
 import cv2
 import numpy as np
 import pytest
+from sklearn.cluster import MiniBatchKMeans
 
 from vns.database.reference_db import DatabaseEntry, ReferenceDatabase
+from vns.vision.bovw_retrieval import compute_bovw_histogram
 
 
 def _make_textured(width: int = 640, height: int = 480) -> np.ndarray:
@@ -103,8 +107,7 @@ def sample_entry(textured_image) -> DatabaseEntry:
     return _extract_entry(textured_image, "synth_001", 33.7470, 73.1370)
 
 
-@pytest.fixture
-def sample_database(textured_image) -> ReferenceDatabase:
+def _build_sample_database(textured_image: np.ndarray) -> ReferenceDatabase:
     db = ReferenceDatabase(name="Test DB")
     db.add_entry(
         _extract_entry(textured_image, "synth_001", 33.7470, 73.1370)
@@ -118,3 +121,74 @@ def sample_database(textured_image) -> ReferenceDatabase:
         _extract_entry(inverted, "synth_003", 33.7480, 73.1380)
     )
     return db
+
+
+def _attach_bovw_index(
+    db: ReferenceDatabase,
+    *,
+    vocab_size: int = 32,
+    random_state: int = 42,
+) -> ReferenceDatabase:
+    all_descriptors = [
+        entry.descriptors
+        for entry in db.entries.values()
+        if entry.descriptors is not None and len(entry.descriptors) > 0
+    ]
+    stacked = np.vstack(all_descriptors).astype(np.float32)
+    k = min(vocab_size, len(stacked))
+    kmeans = MiniBatchKMeans(
+        n_clusters=k,
+        random_state=random_state,
+        batch_size=min(1000, len(stacked)),
+    )
+    kmeans.fit(stacked)
+
+    db.vocabulary = kmeans.cluster_centers_.astype(np.float32)
+    db.bovw_metric = "cosine"
+    for entry in db.entries.values():
+        entry.bovw_histogram = compute_bovw_histogram(
+            entry.descriptors,
+            db.vocabulary,
+            k,
+        )
+    return db
+
+
+@pytest.fixture
+def sample_database(textured_image) -> ReferenceDatabase:
+    return _build_sample_database(textured_image)
+
+
+@pytest.fixture
+def sample_bovw_database(textured_image) -> ReferenceDatabase:
+    return _attach_bovw_index(_build_sample_database(textured_image))
+
+
+@pytest.fixture
+def sample_bovw_config(sample_config) -> dict:
+    config = deepcopy(sample_config)
+    config["retrieval"] = {
+        **config.get("retrieval", {}),
+        "mode": "bovw",
+        "backend": "bovw",
+        "bovw": {
+            "enabled": True,
+            "fallback_to_flann": False,
+        },
+    }
+    return config
+
+
+@pytest.fixture
+def sample_bovw_fallback_config(sample_config) -> dict:
+    config = deepcopy(sample_config)
+    config["retrieval"] = {
+        **config.get("retrieval", {}),
+        "mode": "bovw",
+        "backend": "bovw",
+        "bovw": {
+            "enabled": True,
+            "fallback_to_flann": True,
+        },
+    }
+    return config

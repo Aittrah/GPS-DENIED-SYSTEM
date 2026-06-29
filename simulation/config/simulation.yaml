@@ -43,7 +43,8 @@ matching:
 # Coarse retrieval settings
 retrieval:
   top_k: 5
-  backend: "flann_lsh"
+  mode: "flann"          # packaged runtime selector: "flann" or "bovw"
+  backend: "flann_lsh"   # legacy alias kept for backward compatibility
   # --- BoVW coarse-retrieval index (offline scalability layer) ---
   # NOTE on config authority: vocab_size/metric/random_state/batch_size are
   # BUILD-TIME defaults read by build_reference_database.py. At QUERY time, K and
@@ -52,6 +53,7 @@ retrieval:
   # here does NOT retroactively change an already-built database.
   bovw:
     enabled: true
+    fallback_to_flann: false  # fail fast if mode=bovw but the DB lacks a BoVW index
     vocab_size: 1000      # K visual words (k-means clusters); auto-clamped if total descriptors < K
     metric: "cosine"      # histogram NN metric: "cosine" or "l2"
     random_state: 42      # MiniBatchKMeans seed -> reproducible rebuilds

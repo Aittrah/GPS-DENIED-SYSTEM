@@ -1,6 +1,7 @@
 import numpy as np
 
 from vns.core.runtime import VnsRuntime
+from vns.vision.bovw_retrieval import BoVWIndex
 
 
 def test_runtime_reports_database_unavailable(sample_config, textured_image) -> None:
@@ -65,3 +66,38 @@ def test_runtime_successful_localization_updates_diagnostics(
     assert diagnostics.database_entry_count == sample_database.entry_count
     assert diagnostics.coverage_gap_detected is False
     assert diagnostics.last_localization_reason == "ok"
+
+
+def test_runtime_uses_bovw_when_configured(
+    monkeypatch,
+    sample_bovw_config,
+    sample_bovw_database,
+    textured_image,
+) -> None:
+    calls = {"count": 0}
+    original_query = BoVWIndex.query
+
+    def spy_query(self, descriptors, k=5):
+        calls["count"] += 1
+        return original_query(self, descriptors, k=k)
+
+    monkeypatch.setattr(BoVWIndex, "query", spy_query)
+
+    runtime = VnsRuntime(sample_bovw_config, database=sample_bovw_database)
+    runtime.update_gps(
+        latitude=33.7470,
+        longitude=73.1370,
+        altitude=580.0,
+        has_fix=True,
+        num_satellites=10,
+        hdop=1.0,
+        timestamp=100.0,
+    )
+    runtime.update_heading_from_quaternion(w=1.0, x=0.0, y=0.0, z=0.0)
+
+    result = runtime.process_frame(textured_image, timestamp=101.0)
+
+    assert result.success
+    assert runtime.localizer is not None
+    assert runtime.localizer._retrieval.backend_name == "bovw"
+    assert calls["count"] == 1

@@ -4,7 +4,11 @@ import numpy as np
 import pytest
 
 from vns.database.reference_db import DatabaseEntry
-from vns.vision.retrieval import FlannLshBackend, RetrievalIndex
+from vns.vision.retrieval import (
+    BoVWRetrievalBackend,
+    FlannLshBackend,
+    RetrievalIndex,
+)
 
 
 def _make_entry(entry_id: str, n_desc: int = 50, seed: int = 0) -> DatabaseEntry:
@@ -78,3 +82,56 @@ class TestRetrievalIndex:
         results = idx.query(entries[0].descriptors, top_k=1)
         assert len(results) == 1
         assert results[0][0] == "X"
+
+    def test_from_config_uses_bovw_when_requested(self, sample_bovw_database):
+        idx = RetrievalIndex.from_config(
+            {"mode": "bovw", "bovw": {"enabled": True}},
+            sample_bovw_database,
+        )
+
+        entry = sample_bovw_database.entries["synth_001"]
+        results = idx.query(entry.descriptors, top_k=3)
+
+        assert idx.backend_name == "bovw"
+        assert results[0][0] == "synth_001"
+
+    def test_from_config_falls_back_to_flann(self, sample_database):
+        idx = RetrievalIndex.from_config(
+            {
+                "mode": "bovw",
+                "bovw": {
+                    "enabled": True,
+                    "fallback_to_flann": True,
+                },
+            },
+            sample_database,
+        )
+
+        entry = next(iter(sample_database.entries.values()))
+        results = idx.query(entry.descriptors, top_k=1)
+
+        assert idx.backend_name == "flann"
+        assert results[0][0] == entry.id
+
+    def test_from_config_raises_for_missing_bovw_index(self, sample_database):
+        with pytest.raises(ValueError, match="BoVW retrieval selected"):
+            RetrievalIndex.from_config(
+                {"mode": "bovw", "bovw": {"enabled": True}},
+                sample_database,
+            )
+
+
+class TestBoVWRetrievalBackend:
+
+    def test_build_and_query(self, sample_bovw_database):
+        backend = BoVWRetrievalBackend.from_database(sample_bovw_database)
+        backend.build_index(list(sample_bovw_database.entries.values()))
+
+        entry = sample_bovw_database.entries["synth_002"]
+        results = backend.query(entry.descriptors, top_k=3)
+
+        assert results[0][0] == "synth_002"
+
+    def test_missing_bovw_data_raises(self, sample_database):
+        with pytest.raises(ValueError, match="no BoVW vocabulary"):
+            BoVWRetrievalBackend.from_database(sample_database)
