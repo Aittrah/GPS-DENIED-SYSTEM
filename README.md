@@ -1,16 +1,14 @@
-# Visual Navigation System (VNS)
+markdown# GNSS-Free Navigation System for UAVs
 
-A GNSS-denied navigation system for autonomous drones that uses camera imagery matched against pre-indexed reference images to estimate position when GPS is unavailable or degraded.
+A desktop application for mission planning and GNSS-denied UAV navigation.
+Built as Final Year Project at IIT, Quaid-i-Azam University Islamabad (2022–2026).
 
-## Features
+**Supervisor:** Dr. Bushra Almas  
+**Team:** Muhammad Ahsan, Aittrah Sardar
 
-- **Automatic GNSS Monitoring**: Detects GPS degradation and denial in real-time
-- **Visual Position Estimation**: Matches camera frames against geotagged reference database
-- **Seamless Mode Switching**: Smooth transitions between GPS and visual navigation
-- **Simulation Support**: Full integration with PX4 SITL + Gazebo
-- **Hardware Ready**: Same codebase for simulation and real drone deployment
+---
 
-## Requirements
+## What This Project Does
 
 - Python 3.10+
 - ROS2 Humble (for simulation)
@@ -35,19 +33,13 @@ source .venv/bin/activate  # Linux/macOS
 make install-dev
 ```
 
-### 2. Verify Installation
+### Install Dependencies
 
 ```bash
-# Run tests
-make test
-
-# Check code quality
-make check
+pip install opencv-python numpy Pillow
 ```
 
-### 3. Configuration
-
-Copy and customize the configuration file:
+### Run the App
 
 ```bash
 cp simulation/config/simulation.yaml simulation/config/my_config.yaml
@@ -159,7 +151,7 @@ localizer = VisualLocalizer(config.data, db)
 result = localizer.localize(frame, altitude=580.0, heading_deg=0.0)
 ```
 
-### Command Line Interface
+## Demo
 
 ```bash
 # Validate configuration file
@@ -201,9 +193,7 @@ vns/
 └── resource/             # ROS 2 package resource marker
 ```
 
-## Development
-
-### Running Tests
+## Tests
 
 ```bash
 # All tests
@@ -260,10 +250,8 @@ See `docs/hardware_deployment.md` for detailed setup instructions.
 
 MIT License - see LICENSE file for details.
 
-## Contributing
+## Documentation
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run `make check` to verify
-5. Submit a pull request
+- [How to Use the App](docs/HOW_TO_USE.md)
+- [SRS Document](docs/SRS.md)
+- [SDS Document](docs/SDS.md)
