@@ -12,7 +12,7 @@ def test_main_validates_config_successfully(tmp_path: Path, capsys) -> None:
 
     assert exit_code == 0
     assert "Configuration validation completed successfully." in captured.out
-    assert "custom.vnsdb" in captured.out
+    assert str(tmp_path / "custom.vnsdb") in captured.out
 
 
 def test_main_reports_invalid_config_yaml(tmp_path: Path, capsys) -> None:

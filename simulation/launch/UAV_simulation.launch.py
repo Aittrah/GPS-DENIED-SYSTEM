@@ -36,6 +36,11 @@ from vns.utils.camera_topic import (
     DEFAULT_CAMERA_TOPIC,
     render_sdf_with_camera_topic,
 )
+from vns.utils.paths import (
+    prepend_search_path,
+    resolve_simulation_root,
+    resolve_vns_python,
+)
 
 
 def _spawn_drone(context, *, drone_sdf: str):
@@ -75,21 +80,12 @@ def _spawn_drone(context, *, drone_sdf: str):
 def generate_launch_description():
     """Generate the launch description for VNS simulation."""
 
-    # Get package directories
-    pkg_dir = Path(__file__).parent.parent
-    worlds_dir = pkg_dir / 'worlds'
-    models_dir = pkg_dir / 'models'
-    config_dir = pkg_dir / 'config'
+    simulation_root = resolve_simulation_root(Path(__file__).resolve())
+    worlds_dir = simulation_root / 'worlds'
+    models_dir = simulation_root / 'models'
+    config_dir = simulation_root / 'config'
 
     drone_sdf = str(models_dir / 'iris_downward_cam' / 'model.sdf')
-
-    # vns_node runs under the .venv-run interpreter (numpy 1.26.x) so ROS Humble's
-    # cv_bridge (built for numpy 1.x) does not segfault on the first camera frame.
-    # The venv has --system-site-packages, so rclpy / ROS msgs resolve from the
-    # sourced /opt/ros/humble overlay while numpy 1.26.x shadows user-site 2.x.
-    # Absolute path: under `ros2 launch vns ...` this file runs from the install/
-    # share dir, so the venv cannot be derived relative to __file__.
-    venv_python = '/home/hp/GPS-DENIED-SYSTEM/.venv-run/bin/python3'
 
     # ==================== Launch Arguments ====================
 
@@ -124,12 +120,23 @@ def generate_launch_description():
         description='Run gzserver only, skip gzclient GUI'
     )
 
+    vns_python_arg = DeclareLaunchArgument(
+        'vns_python',
+        default_value=resolve_vns_python(simulation_root),
+        description='Python interpreter used for VNS ROS nodes'
+    )
+
     # ==================== Environment ====================
 
     # Gazebo Classic uses GAZEBO_MODEL_PATH (prepend, keep existing entries)
     gazebo_model_path = SetEnvironmentVariable(
         'GAZEBO_MODEL_PATH',
-        str(models_dir) + ':' + '${GAZEBO_MODEL_PATH}'
+        prepend_search_path(models_dir, 'GAZEBO_MODEL_PATH'),
+    )
+
+    gazebo_resource_path = SetEnvironmentVariable(
+        'GAZEBO_RESOURCE_PATH',
+        prepend_search_path(worlds_dir, 'GAZEBO_RESOURCE_PATH'),
     )
 
     # Disable the online model database so gzserver does not block on startup
@@ -178,7 +185,7 @@ def generate_launch_description():
                 package='vns',
                 executable='vns_node',
                 name='vns_node',
-                prefix=[venv_python],  # see venv_python note above (numpy/cv_bridge)
+                prefix=[LaunchConfiguration('vns_python')],
                 parameters=[{
                     'config_file': LaunchConfiguration('vns_config'),
                     'camera_topic': LaunchConfiguration('camera_topic'),
@@ -199,9 +206,11 @@ def generate_launch_description():
         vns_config_arg,
         camera_topic_arg,
         headless_arg,
+        vns_python_arg,
 
         # Environment
         gazebo_model_path,
+        gazebo_resource_path,
         gazebo_model_db,
 
         # Gazebo

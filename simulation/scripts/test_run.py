@@ -16,15 +16,15 @@ from vns.database.reference_db import ReferenceDatabase
 def main():
     print("Starting simulated VNS flight evaluation...")
     
-    config_path = "simulation/config/simulation.yaml"
-    database_path = "simulation/database/qau_campus.vnsdb"
+    config_path = root_dir / "simulation" / "config" / "simulation.yaml"
+    database_path = root_dir / "simulation" / "database" / "qau_campus.vnsdb"
     
-    node = VnsNode(config_path, database_path)
+    node = VnsNode(str(config_path), str(database_path))
     
     # Let's generate a mock 640x480 gray image for processing
     # To get matching features, we will load a real reference image from the database!
     try:
-        db = ReferenceDatabase.load(database_path)
+        db = ReferenceDatabase.load(str(database_path))
     except ValueError as exc:
         print(
             f"{exc}\nMigrate the database with: "
@@ -36,7 +36,7 @@ def main():
     
     # Read the actual reference image to guarantee a 100% successful feature match!
     import cv2
-    image = cv2.imread(first_entry.source_path)
+    image = cv2.imread(str(db.resolve_source_path(first_entry.source_path)))
     if image is None:
         # Fallback to synthetic if image can't be read
         image = np.zeros((480, 640, 3), dtype=np.uint8)

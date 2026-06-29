@@ -8,10 +8,11 @@ from typing import Sequence
 
 from vns.config.config_manager import ConfigError, ConfigManager
 from vns.database.reference_db import LEGACY_FORMAT, ReferenceDatabase
+from vns.utils.paths import resolve_simulation_root
 
 
 def _script_path(name: str) -> Path:
-    return Path(__file__).resolve().parents[2] / "simulation" / "scripts" / name
+    return resolve_simulation_root(Path(__file__).resolve()) / "scripts" / name
 
 
 def _print_error(message: str) -> int:
@@ -156,7 +157,9 @@ def _validate_config(config_path: str | Path) -> int:
     except (ConfigError, FileNotFoundError, IsADirectoryError) as exc:
         return _print_error(str(exc))
 
-    db_path = config.get("database.path", "../database/qau_campus.vnsdb")
+    db_path = config.resolve_path(
+        str(config.get("database.path", "../database/qau_campus.vnsdb"))
+    )
     print(f"Loaded config. Database path is set to: {db_path}")
     print("Configuration validation completed successfully.")
     return 0

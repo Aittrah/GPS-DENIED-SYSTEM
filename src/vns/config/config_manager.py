@@ -9,6 +9,7 @@ from pydantic import ValidationError
 import yaml
 
 from .models import VnsConfig
+from vns.utils.paths import resolve_from_base
 
 ConfigScalar: TypeAlias = str | int | float | bool | None
 ConfigValue: TypeAlias = ConfigScalar | list["ConfigValue"] | dict[str, "ConfigValue"]
@@ -28,12 +29,19 @@ class InvalidConfigError(ConfigError):
 class ConfigManager:
     """Load, validate, and query VNS YAML configuration."""
 
-    def __init__(self, config_dict: Mapping[str, object] | None = None) -> None:
+    def __init__(
+        self,
+        config_dict: Mapping[str, object] | None = None,
+        *,
+        source_path: str | Path | None = None,
+    ) -> None:
         raw_config = {} if config_dict is None else config_dict
         try:
             self._model = VnsConfig.model_validate(raw_config)
         except ValidationError as exc:
             raise InvalidConfigError(f"Configuration validation failed: {exc}") from exc
+        self._source_path = None if source_path is None else Path(source_path).resolve()
+        self._base_dir = None if self._source_path is None else self._source_path.parent
         self._config = self._normalize_mapping(
             self._model.model_dump(mode="python"),
             context="config",
@@ -61,13 +69,13 @@ class ConfigManager:
             ) from exc
 
         if raw_data is None:
-            return cls({})
+            return cls({}, source_path=path)
         if not isinstance(raw_data, Mapping):
             raise InvalidConfigError(
                 "Configuration top-level YAML document must be a mapping."
             )
 
-        return cls(raw_data)
+        return cls(raw_data, source_path=path)
 
     @classmethod
     def from_yaml(cls, filepath: str | Path) -> "ConfigManager":
@@ -151,3 +159,7 @@ class ConfigManager:
     def model(self) -> VnsConfig:
         """Return the validated Pydantic configuration model."""
         return self._model.model_copy(deep=True)
+
+    def resolve_path(self, path_like: str | Path) -> Path:
+        """Resolve a path relative to the config file location when known."""
+        return resolve_from_base(path_like, self._base_dir)

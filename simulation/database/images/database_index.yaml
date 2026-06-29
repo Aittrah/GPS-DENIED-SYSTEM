@@ -15,7 +15,7 @@ database:
   version: 1.0.0
 images:
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_admin_01.jpg
+  filepath: qau_admin_01.jpg
   heading: 0
   height: 480
   id: qau_admin_01
@@ -24,7 +24,7 @@ images:
   timestamp: '2026-05-24T08:05:19.921610'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_admin_02.jpg
+  filepath: qau_admin_02.jpg
   heading: 90
   height: 480
   id: qau_admin_02
@@ -33,7 +33,7 @@ images:
   timestamp: '2026-05-24T08:05:19.930912'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_admin_03.jpg
+  filepath: qau_admin_03.jpg
   heading: 180
   height: 480
   id: qau_admin_03
@@ -42,7 +42,7 @@ images:
   timestamp: '2026-05-24T08:05:19.939136'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_admin_04.jpg
+  filepath: qau_admin_04.jpg
   heading: 270
   height: 480
   id: qau_admin_04
@@ -51,7 +51,7 @@ images:
   timestamp: '2026-05-24T08:05:19.947466'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_library_01.jpg
+  filepath: qau_library_01.jpg
   heading: 0
   height: 480
   id: qau_library_01
@@ -60,7 +60,7 @@ images:
   timestamp: '2026-05-24T08:05:19.955797'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_library_02.jpg
+  filepath: qau_library_02.jpg
   heading: 180
   height: 480
   id: qau_library_02
@@ -69,7 +69,7 @@ images:
   timestamp: '2026-05-24T08:05:19.962576'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_physics_01.jpg
+  filepath: qau_physics_01.jpg
   heading: 45
   height: 480
   id: qau_physics_01
@@ -78,7 +78,7 @@ images:
   timestamp: '2026-05-24T08:05:19.967691'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_physics_02.jpg
+  filepath: qau_physics_02.jpg
   heading: 225
   height: 480
   id: qau_physics_02
@@ -87,7 +87,7 @@ images:
   timestamp: '2026-05-24T08:05:19.972324'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_chemistry_01.jpg
+  filepath: qau_chemistry_01.jpg
   heading: 0
   height: 480
   id: qau_chemistry_01
@@ -96,7 +96,7 @@ images:
   timestamp: '2026-05-24T08:05:19.977228'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_biology_01.jpg
+  filepath: qau_biology_01.jpg
   heading: 90
   height: 480
   id: qau_biology_01
@@ -105,7 +105,7 @@ images:
   timestamp: '2026-05-24T08:05:19.981672'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_cs_01.jpg
+  filepath: qau_cs_01.jpg
   heading: 0
   height: 480
   id: qau_cs_01
@@ -114,7 +114,7 @@ images:
   timestamp: '2026-05-24T08:05:19.986136'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_cs_02.jpg
+  filepath: qau_cs_02.jpg
   heading: 180
   height: 480
   id: qau_cs_02
@@ -123,7 +123,7 @@ images:
   timestamp: '2026-05-24T08:05:19.990390'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_mosque_01.jpg
+  filepath: qau_mosque_01.jpg
   heading: 0
   height: 480
   id: qau_mosque_01
@@ -132,7 +132,7 @@ images:
   timestamp: '2026-05-24T08:05:19.994941'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_mosque_02.jpg
+  filepath: qau_mosque_02.jpg
   heading: 180
   height: 480
   id: qau_mosque_02
@@ -141,7 +141,7 @@ images:
   timestamp: '2026-05-24T08:05:19.999210'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_tower_01.jpg
+  filepath: qau_tower_01.jpg
   heading: 270
   height: 480
   id: qau_tower_01
@@ -150,7 +150,7 @@ images:
   timestamp: '2026-05-24T08:05:20.003485'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_hostel_01.jpg
+  filepath: qau_hostel_01.jpg
   heading: 90
   height: 480
   id: qau_hostel_01
@@ -159,7 +159,7 @@ images:
   timestamp: '2026-05-24T08:05:20.007683'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_hostel_02.jpg
+  filepath: qau_hostel_02.jpg
   heading: 90
   height: 480
   id: qau_hostel_02
@@ -168,7 +168,7 @@ images:
   timestamp: '2026-05-24T08:05:20.011865'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/qau_sports_01.jpg
+  filepath: qau_sports_01.jpg
   heading: 0
   height: 480
   id: qau_sports_01
@@ -177,7 +177,7 @@ images:
   timestamp: '2026-05-24T08:05:20.016002'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/grid_nw.jpg
+  filepath: grid_nw.jpg
   heading: 135
   height: 480
   id: grid_nw
@@ -186,7 +186,7 @@ images:
   timestamp: '2026-05-24T08:05:20.020054'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/grid_ne.jpg
+  filepath: grid_ne.jpg
   heading: 225
   height: 480
   id: grid_ne
@@ -195,7 +195,7 @@ images:
   timestamp: '2026-05-24T08:05:20.024038'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/grid_sw.jpg
+  filepath: grid_sw.jpg
   heading: 45
   height: 480
   id: grid_sw
@@ -204,7 +204,7 @@ images:
   timestamp: '2026-05-24T08:05:20.028022'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/grid_se.jpg
+  filepath: grid_se.jpg
   heading: 315
   height: 480
   id: grid_se
@@ -213,7 +213,7 @@ images:
   timestamp: '2026-05-24T08:05:20.031950'
   width: 640
 - altitude: 550
-  filepath: /home/hp/GPS-DENIED-SYSTEM/simulation/scripts/../database/images/grid_center.jpg
+  filepath: grid_center.jpg
   heading: 0
   height: 480
   id: grid_center

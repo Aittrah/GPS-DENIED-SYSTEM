@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import cv2
 import numpy as np
+from vns.utils.paths import relativize_to_base, resolve_from_base
 
 logger = logging.getLogger("vns.database")
 
@@ -84,6 +85,8 @@ class ReferenceDatabase:
         self.entries: Dict[str, DatabaseEntry] = {}
         self.vocabulary: Optional[np.ndarray] = None
         self.bovw_metric: str = "cosine"
+        self._source_path: Optional[Path] = None
+        self._base_dir: Optional[Path] = None
 
     @property
     def entry_count(self) -> int:
@@ -311,10 +314,27 @@ class ReferenceDatabase:
                 results.append(entry)
         return results
 
+    def resolve_source_path(self, source_path: str | Path) -> Path:
+        """Resolve an entry source path relative to the loaded database file."""
+        path = Path(source_path)
+        if path.is_absolute():
+            return path
+        if self._base_dir is None:
+            raise ValueError(
+                "Cannot resolve a relative source path without a database file location."
+            )
+        return resolve_from_base(path, self._base_dir)
+
+    def _set_source_path(self, filepath: str | Path) -> None:
+        resolved = Path(filepath).resolve()
+        self._source_path = resolved
+        self._base_dir = resolved.parent
+
     def save(self, filepath: str) -> None:
         """Save database to a safe archive format."""
         path = Path(filepath)
         path.parent.mkdir(parents=True, exist_ok=True)
+        output_dir = path.resolve().parent
 
         entry_documents = []
         archive_arrays: Dict[str, np.ndarray] = {}
@@ -371,7 +391,7 @@ class ReferenceDatabase:
             entry_documents.append(
                 {
                     "id": entry.id,
-                    "source_path": entry.source_path,
+                    "source_path": relativize_to_base(entry.source_path, output_dir),
                     "latitude": float(entry.latitude),
                     "longitude": float(entry.longitude),
                     "altitude": float(entry.altitude),
@@ -416,6 +436,7 @@ class ReferenceDatabase:
 
         with open(path, "wb") as handle:
             np.savez_compressed(handle, **archive_arrays)
+        self._set_source_path(path)
 
     @classmethod
     def load(cls, filepath: str) -> "ReferenceDatabase":
@@ -616,6 +637,7 @@ class ReferenceDatabase:
                 f"Database '{filepath}' bounds do not match the stored entries."
             )
         db.bounds = expected_bounds
+        db._set_source_path(filepath)
 
         return db
 
@@ -743,5 +765,6 @@ class ReferenceDatabase:
                 f"Legacy database '{filepath}' bounds do not match the stored entries."
             )
         db.bounds = computed_bounds if db.entries else expected_bounds
+        db._set_source_path(filepath)
 
         return db

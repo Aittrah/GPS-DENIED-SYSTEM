@@ -52,7 +52,8 @@ class VnsNode(Node):
             retention_count=logging_cfg.retention_count,
         )
         self._bridge = CvBridge()
-        self._db = self._load_database(db_path or self._config.model.database.path)
+        configured_db_path = self._config.resolve_path(self._config.model.database.path)
+        self._db = self._load_database(db_path or str(configured_db_path))
         self._runtime = VnsRuntime(self._config, database=self._db)
 
         ros_cfg = self._config.model.ros

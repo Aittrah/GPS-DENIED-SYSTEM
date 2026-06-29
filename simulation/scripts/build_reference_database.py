@@ -45,6 +45,7 @@ try:
         GeoBounds as SafeGeoBounds,
         ReferenceDatabase as SafeReferenceDatabase,
     )
+    from vns.utils.paths import relativize_to_base, resolve_from_base
     from vns.vision.bovw_retrieval import BoVWIndex, compute_bovw_histogram
 except ImportError:
     print("Error: scikit-learn not installed. Run: pip3 install scikit-learn")
@@ -171,7 +172,8 @@ def build_database(
     algorithm: str = "ORB"
 ) -> ReferenceDatabase:
     """Build reference database from image index."""
-    images = load_image_index(index_path)
+    index_file = Path(index_path).resolve()
+    images = load_image_index(str(index_file))
     
     if not images:
         raise ValueError("No images found in index")
@@ -195,16 +197,17 @@ def build_database(
     
     for i, img_data in enumerate(images):
         print(f"  [{i+1}/{len(images)}] {img_data['id']}", end=" ")
-        
+
         try:
+            image_path = resolve_from_base(img_data['filepath'], index_file.parent)
             keypoints, descriptors = extract_orb_features(
-                img_data['filepath'],
+                str(image_path),
                 max_features
             )
-            
+
             entry = DatabaseEntry(
                 id=img_data['id'],
-                source_path=img_data['filepath'],
+                source_path=str(image_path),
                 latitude=img_data['latitude'],
                 longitude=img_data['longitude'],
                 altitude=img_data['altitude'],
@@ -298,6 +301,8 @@ def build_bovw_vocabulary(
 
 def save_database(db: ReferenceDatabase, output_path: str) -> None:
     """Save database to the canonical safe archive format."""
+    output_file = Path(output_path).resolve()
+    output_dir = output_file.parent
     safe_db = SafeReferenceDatabase(
         name=db.name,
         version=db.version,
@@ -318,7 +323,7 @@ def save_database(db: ReferenceDatabase, output_path: str) -> None:
     for entry_id, entry in db.entries.items():
         safe_db.entries[entry_id] = SafeDatabaseEntry(
             id=entry.id,
-            source_path=entry.source_path,
+            source_path=relativize_to_base(entry.source_path, output_dir),
             latitude=entry.latitude,
             longitude=entry.longitude,
             altitude=entry.altitude,
@@ -336,7 +341,7 @@ def save_database(db: ReferenceDatabase, output_path: str) -> None:
             ),
         )
 
-    safe_db.save(output_path)
+    safe_db.save(str(output_file))
     print(f"Database saved to: {output_path}")
 
 
@@ -482,12 +487,12 @@ def main():
     )
 
     # Resolve paths
-    script_dir = Path(__file__).parent
-    index_path = script_dir / args.input
-    output_path = script_dir / args.output
+    script_dir = Path(__file__).resolve().parent
+    index_path = (script_dir / args.input).resolve()
+    output_path = (script_dir / args.output).resolve()
 
     # Build-time BoVW defaults from simulation.yaml (CLI flags override these).
-    bovw_cfg = load_bovw_defaults(script_dir / '../config/simulation.yaml')
+    bovw_cfg = load_bovw_defaults((script_dir / '../config/simulation.yaml').resolve())
     vocab_size = args.vocab_size if args.vocab_size is not None else int(bovw_cfg.get('vocab_size', 1000))
     metric = args.metric if args.metric is not None else str(bovw_cfg.get('metric', 'cosine'))
     random_state = args.random_state if args.random_state is not None else int(bovw_cfg.get('random_state', 42))

@@ -89,8 +89,8 @@
           </geometry>
           <material>
             <script>
-              <uri>file:///home/hp/GPS-DENIED-SYSTEM/simulation/worlds/materials/scripts</uri>
-              <uri>file:///home/hp/GPS-DENIED-SYSTEM/simulation/worlds/materials/textures</uri>
+              <uri>file://materials/scripts</uri>
+              <uri>file://materials/textures</uri>
               <name>QAUCampus/Ground</name>
             </script>
           </material>

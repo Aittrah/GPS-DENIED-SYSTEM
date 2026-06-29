@@ -31,16 +31,23 @@ for retrieval richness; they are simply not rendered onto the ground.
 from __future__ import annotations
 
 import math
+import sys
 from pathlib import Path
 
 import cv2
 import numpy as np
 import yaml
 
-REPO = Path("/home/hp/GPS-DENIED-SYSTEM")
-INDEX = REPO / "simulation/database/images/database_index.yaml"
-IMAGES_DIR = REPO / "simulation/database/images"
-OUT_PNG = REPO / "simulation/worlds/materials/textures/qau_campus_map.png"
+_REPO_SRC = Path(__file__).resolve().parents[2] / "src"
+if _REPO_SRC.exists() and str(_REPO_SRC) not in sys.path:
+    sys.path.insert(0, str(_REPO_SRC))
+
+from vns.utils.paths import resolve_simulation_root
+
+SIMULATION_ROOT = resolve_simulation_root(Path(__file__).resolve())
+INDEX = SIMULATION_ROOT / "database" / "images" / "database_index.yaml"
+IMAGES_DIR = SIMULATION_ROOT / "database" / "images"
+OUT_PNG = SIMULATION_ROOT / "worlds" / "materials" / "textures" / "qau_campus_map.png"
 
 # World / DB origin (must match world <spherical_coordinates>)
 ORIGIN_LAT = 33.7470

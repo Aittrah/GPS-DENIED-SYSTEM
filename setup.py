@@ -37,6 +37,7 @@ setup(
     ] + package_data_files(
         "simulation/launch",
         "simulation/config",
+        "simulation/database",
         "simulation/worlds",
         "simulation/models",
         "simulation/scripts",
