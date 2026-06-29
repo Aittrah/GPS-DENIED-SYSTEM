@@ -30,7 +30,7 @@ jobs:
           python -m pip install pytest
 
       - name: Run test suite
-        run: python -m pytest tests/ -q
+        run: PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests/ -q
 
   ros-humble-smoke:
     runs-on: ubuntu-22.04
