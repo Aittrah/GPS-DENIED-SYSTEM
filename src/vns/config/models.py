@@ -156,7 +156,8 @@ class LoggingConfig(VnsBaseModel):
 class SimulationConfig(VnsBaseModel):
     enabled: bool = True
     ground_truth_topic: str = "/vns_drone/ground_truth"
-    log_ground_truth: bool = True
+    log_ground_truth: bool = False
+    record_estimates_without_ground_truth: bool = False
     position_error_threshold: float = 5.0
 
 

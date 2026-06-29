@@ -50,10 +50,21 @@ def load_and_generate_report(
                 continue
             try:
                 data = json.loads(line)
-                timestamps.append(data.get("timestamp", 0.0))
-                horiz_errors.append(data.get("horizontal_error", 0.0))
-                vert_errors.append(data.get("vertical_error", 0.0))
-                heading_errors.append(data.get("heading_error", 0.0))
+                horizontal_error = data.get("horizontal_error")
+                vertical_error = data.get("vertical_error")
+                heading_error = data.get("heading_error")
+
+                if (
+                    horizontal_error is None
+                    or vertical_error is None
+                    or heading_error is None
+                ):
+                    continue
+
+                timestamps.append(float(data.get("timestamp", 0.0)))
+                horiz_errors.append(float(horizontal_error))
+                vert_errors.append(float(vertical_error))
+                heading_errors.append(float(heading_error))
             except Exception as e:
                 logger.warning("Failed to parse log line: %s", e)
                 

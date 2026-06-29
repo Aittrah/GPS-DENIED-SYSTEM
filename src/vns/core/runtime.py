@@ -29,6 +29,17 @@ class FrameProcessingResult:
     localization: LocalizationResult
 
 
+@dataclass(frozen=True)
+class GroundTruthPose:
+    """Latest ground-truth sample transformed into the runtime geodetic frame."""
+
+    latitude: float
+    longitude: float
+    altitude: float
+    heading_deg: float
+    timestamp: float
+
+
 class VnsRuntime:
     """Own runtime state shared across ROS, scripts, and tests."""
 
@@ -77,6 +88,7 @@ class VnsRuntime:
         self._last_localization_reason: str | None = None
         self._last_localization: LocalizationResult | None = None
         self._last_blended_pose: tuple[float, float, float] | None = None
+        self._last_ground_truth: GroundTruthPose | None = None
         self._coverage_gap_detected = False
 
     @property
@@ -119,6 +131,10 @@ class VnsRuntime:
     def last_yaw_rad(self) -> float:
         return self._last_yaw_rad
 
+    @property
+    def last_ground_truth(self) -> GroundTruthPose | None:
+        return self._last_ground_truth
+
     def attach_mavlink(self, mavlink: MAVLinkInterface) -> None:
         self._mavlink = mavlink
 
@@ -157,7 +173,33 @@ class VnsRuntime:
         self._last_heading_deg = math.degrees(yaw_rad)
 
     def update_ground_truth_altitude(self, local_up_m: float) -> None:
-        self._last_altitude = self._config_model.geo_reference.origin_altitude + local_up_m
+        altitude = self._config_model.geo_reference.origin_altitude + local_up_m
+        self._last_altitude = altitude
+        if self._last_ground_truth is not None:
+            self._last_ground_truth = replace(
+                self._last_ground_truth,
+                altitude=altitude,
+                timestamp=time.time(),
+            )
+
+    def update_ground_truth_pose(
+        self,
+        *,
+        latitude: float,
+        longitude: float,
+        altitude: float,
+        heading_deg: float,
+        timestamp: float | None = None,
+    ) -> None:
+        ts = time.time() if timestamp is None else timestamp
+        self._last_altitude = altitude
+        self._last_ground_truth = GroundTruthPose(
+            latitude=latitude,
+            longitude=longitude,
+            altitude=altitude,
+            heading_deg=heading_deg,
+            timestamp=ts,
+        )
 
     def check_gnss_timeout(self, current_time: float | None = None) -> None:
         self._gnss_monitor.check_timeout(current_time=current_time)

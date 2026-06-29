@@ -7,6 +7,7 @@ sends VISION_POSITION_ESTIMATE to PX4 EKF2 via MAVLink.
 """
 
 import asyncio
+import math
 import threading
 import time
 from pathlib import Path
@@ -22,8 +23,9 @@ from vns.config import ConfigManager, InvalidConfigError
 from vns.core.runtime import VnsRuntime
 from vns.database.reference_db import ReferenceDatabase
 from vns.interfaces.mavlink_interface import MAVLinkInterface
-from vns.utils.coordinates import geodetic_to_enu
+from vns.utils.coordinates import enu_to_geodetic, geodetic_to_enu
 from vns.utils.logging import setup_logging
+from vns.validation import JsonlEvaluationLogger
 
 
 class VnsNode(Node):
@@ -34,6 +36,8 @@ class VnsNode(Node):
         self.declare_parameter('config_file', '')
         self.declare_parameter('database_path', '')
         self.declare_parameter('camera_topic', '')
+        self.declare_parameter('ground_truth_topic', '')
+        self.declare_parameter('evaluation_logging', '')
         self.declare_parameter('simulation_mode', True)
 
         config_path = self.get_parameter('config_file').value
@@ -43,6 +47,15 @@ class VnsNode(Node):
         mavlink_config = self._config.model.mavlink.model_dump(mode="python")
         self.declare_parameter('mavlink_enabled', mavlink_config.get('enabled', True))
         logging_cfg = self._config.model.logging
+        sim_cfg = self._config.model.simulation
+        self._simulation_mode = bool(self.get_parameter('simulation_mode').value)
+        self._evaluation_logging_enabled = self._resolve_optional_bool(
+            'evaluation_logging',
+            sim_cfg.log_ground_truth,
+        )
+        self._record_estimates_without_ground_truth = (
+            sim_cfg.record_estimates_without_ground_truth
+        )
         setup_logging(
             level=logging_cfg.level,
             log_dir=logging_cfg.log_dir,
@@ -55,10 +68,16 @@ class VnsNode(Node):
         configured_db_path = self._config.resolve_path(self._config.model.database.path)
         self._db = self._load_database(db_path or str(configured_db_path))
         self._runtime = VnsRuntime(self._config, database=self._db)
+        self._evaluation_logger = JsonlEvaluationLogger(
+            enabled=self._evaluation_logging_enabled,
+            log_dir=logging_cfg.log_dir,
+        )
 
         ros_cfg = self._config.model.ros
-        sim_cfg = self._config.model.simulation
         camera_topic = self.get_parameter('camera_topic').value or ros_cfg.camera_topic
+        ground_truth_topic = (
+            self.get_parameter('ground_truth_topic').value or sim_cfg.ground_truth_topic
+        )
         self._mavlink_enabled = bool(self.get_parameter('mavlink_enabled').value)
         self._mavlink: MAVLinkInterface | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -84,8 +103,10 @@ class VnsNode(Node):
             NavSatFix, ros_cfg.gps_topic, self._on_gps, 10)
         self._imu_sub = self.create_subscription(
             Imu, ros_cfg.imu_topic, self._on_imu, 10)
-        self._gt_sub = self.create_subscription(
-            Odometry, sim_cfg.ground_truth_topic, self._on_ground_truth, 10)
+        self._gt_sub = None
+        if self._simulation_mode and ground_truth_topic:
+            self._gt_sub = self.create_subscription(
+                Odometry, ground_truth_topic, self._on_ground_truth, 10)
 
         self._vision_pub = self.create_publisher(
             PoseStamped, ros_cfg.vision_pose_topic, 10
@@ -162,11 +183,9 @@ class VnsNode(Node):
     # ── Callbacks ──
 
     def _on_image(self, msg: Image):
-        if self._runtime.localizer is None:
-            return
-
         cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         result = self._runtime.process_frame(cv_image)
+        self._log_evaluation_sample(msg, result)
         if not result.success:
             return
 
@@ -216,12 +235,81 @@ class VnsNode(Node):
         )
 
     def _on_ground_truth(self, msg: Odometry):
-        self._runtime.update_ground_truth_altitude(msg.pose.pose.position.z)
+        q = msg.pose.pose.orientation
+        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        yaw_rad = math.atan2(siny_cosp, cosy_cosp)
+        yaw_deg = math.degrees(yaw_rad) % 360.0
+
+        geo_origin = self._runtime.geo_origin
+        origin_lat = geo_origin.get('origin_latitude', 0.0)
+        origin_lon = geo_origin.get('origin_longitude', 0.0)
+        origin_alt = geo_origin.get('origin_altitude', 0.0)
+
+        gt_lat, gt_lon, gt_alt = enu_to_geodetic(
+            msg.pose.pose.position.x,
+            msg.pose.pose.position.y,
+            msg.pose.pose.position.z,
+            origin_lat,
+            origin_lon,
+            origin_alt,
+        )
+        stamp = self._stamp_to_seconds(msg.header.stamp)
+        self._runtime.update_ground_truth_pose(
+            latitude=gt_lat,
+            longitude=gt_lon,
+            altitude=gt_alt,
+            heading_deg=yaw_deg,
+            timestamp=stamp,
+        )
 
     def _check_gnss_timeout(self):
         self._runtime.check_gnss_timeout()
 
+    def _log_evaluation_sample(self, msg: Image, result) -> None:
+        if self._evaluation_logger is None:
+            return
+
+        ros_time = self._stamp_to_seconds(msg.header.stamp)
+        timestamp = ros_time if ros_time is not None else result.localization.timestamp
+        self._evaluation_logger.write_frame(
+            timestamp=timestamp,
+            ros_time=ros_time,
+            result=result,
+            ground_truth=self._runtime.last_ground_truth,
+            gnss_status=self._runtime.gnss_monitor.state.name,
+            record_without_ground_truth=self._record_estimates_without_ground_truth,
+        )
+
+    def _resolve_optional_bool(self, parameter_name: str, default: bool) -> bool:
+        raw_value = self.get_parameter(parameter_name).value
+        if isinstance(raw_value, bool):
+            return raw_value
+        if raw_value in {"", None}:
+            return default
+        if isinstance(raw_value, str):
+            normalized = raw_value.strip().lower()
+            if normalized in {"true", "1", "yes", "on"}:
+                return True
+            if normalized in {"false", "0", "no", "off"}:
+                return False
+        self.get_logger().warn(
+            f"Invalid boolean override for {parameter_name}: {raw_value!r}; "
+            f"using config value {default!r}"
+        )
+        return default
+
+    @staticmethod
+    def _stamp_to_seconds(stamp) -> float | None:
+        seconds = getattr(stamp, 'sec', 0)
+        nanoseconds = getattr(stamp, 'nanosec', 0)
+        if seconds == 0 and nanoseconds == 0:
+            return None
+        return float(seconds) + float(nanoseconds) / 1e9
+
     def destroy_node(self):
+        if self._evaluation_logger is not None:
+            self._evaluation_logger.close()
         if self._mavlink is not None and self._loop is not None and self._loop.is_running():
             future = asyncio.run_coroutine_threadsafe(
                 self._mavlink.disconnect(), self._loop

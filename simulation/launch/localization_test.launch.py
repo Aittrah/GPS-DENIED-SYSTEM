@@ -65,6 +65,16 @@ def generate_launch_description():
         default_value='false',
         description='Run gzserver only, skip the gzclient GUI'
     )
+    evaluation_logging_arg = DeclareLaunchArgument(
+        'evaluation_logging',
+        default_value='',
+        description='Override evaluation logging; empty string uses config'
+    )
+    ground_truth_topic_arg = DeclareLaunchArgument(
+        'ground_truth_topic',
+        default_value='',
+        description='Override ground-truth topic; empty string uses config'
+    )
 
     vns_python_arg = DeclareLaunchArgument(
         'vns_python',
@@ -116,6 +126,8 @@ def generate_launch_description():
                 parameters=[{
                     'config_file': LaunchConfiguration('vns_config'),
                     'database_path': str(database_dir / 'qau_campus.vnsdb'),
+                    'ground_truth_topic': LaunchConfiguration('ground_truth_topic'),
+                    'evaluation_logging': LaunchConfiguration('evaluation_logging'),
                     'mavlink_enabled': False,
                     'simulation_mode': True,
                 }],
@@ -128,6 +140,8 @@ def generate_launch_description():
         world_file_arg,
         vns_config_arg,
         headless_arg,
+        evaluation_logging_arg,
+        ground_truth_topic_arg,
         vns_python_arg,
         gazebo_model_path,
         gazebo_resource_path,

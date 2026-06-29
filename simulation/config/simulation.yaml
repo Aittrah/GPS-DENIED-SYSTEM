@@ -117,7 +117,8 @@ logging:
 simulation:
   enabled: true
   ground_truth_topic: "/vns_drone/ground_truth"
-  log_ground_truth: true
+  log_ground_truth: true  # emit packaged runtime JSONL evaluation logs
+  record_estimates_without_ground_truth: false
   position_error_threshold: 5.0  # meters - warn if error exceeds this
 
 # Geographic reference (QAU Campus, Islamabad)

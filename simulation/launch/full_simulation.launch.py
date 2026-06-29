@@ -142,6 +142,16 @@ def generate_launch_description():
         default_value=DEFAULT_CAMERA_TOPIC,
         description='ROS image topic shared by the Gazebo camera and vns_node'
     )
+    evaluation_logging_arg = DeclareLaunchArgument(
+        'evaluation_logging',
+        default_value='',
+        description='Override evaluation logging; empty string uses config'
+    )
+    ground_truth_topic_arg = DeclareLaunchArgument(
+        'ground_truth_topic',
+        default_value='',
+        description='Override ground-truth topic; empty string uses config'
+    )
 
     vns_python_arg = DeclareLaunchArgument(
         'vns_python',
@@ -254,6 +264,8 @@ def generate_launch_description():
                     'config_file': str(config_dir / 'simulation.yaml'),
                     'database_path': str(database_dir / 'qau_campus.vnsdb'),
                     'camera_topic': LaunchConfiguration('camera_topic'),
+                    'ground_truth_topic': LaunchConfiguration('ground_truth_topic'),
+                    'evaluation_logging': LaunchConfiguration('evaluation_logging'),
                     'simulation_mode': True,
                 }],
                 # camera_topic keeps the Gazebo publisher and node subscriber
@@ -310,6 +322,8 @@ def generate_launch_description():
         rviz_arg,
         record_arg,
         camera_topic_arg,
+        evaluation_logging_arg,
+        ground_truth_topic_arg,
         vns_python_arg,
 
         # Environment
