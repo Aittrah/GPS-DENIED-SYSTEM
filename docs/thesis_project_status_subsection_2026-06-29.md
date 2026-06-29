@@ -56,7 +56,7 @@ The project would also benefit from several engineering cleanup tasks. The hardc
 
 ### 5.4 Documentation Tasks
 
-The final category of work is documentation cleanup. The local status notes should be updated to reflect the current number of passing tests, the apparent resolution of the camera-topic remapping issue, the broader CI coverage, and the fact that certain previously listed cleanup files are no longer present. The hardware deployment guide should also be revised so that its commands and configuration paths match the actual repository layout and the project’s stated use of `python3` and `pip3`.
+The final category of work is documentation cleanup. The local status notes should be updated to reflect the current number of passing tests, the apparent resolution of the camera-topic remapping issue, the broader CI coverage, and the fact that certain previously listed cleanup files are no longer present. The hardware deployment guide has been revised so that its commands and configuration paths match the actual repository layout and the project’s stated use of `python3` and `pip3`.
 
 ## 6. Summary
 

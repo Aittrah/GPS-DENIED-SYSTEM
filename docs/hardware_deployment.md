@@ -27,7 +27,7 @@ To achieve real-time 30+ FPS visual navigation estimation, the following hardwar
 3. **Alignment:** Align the camera body axes with the drone body:
    - Camera $+X$ axis must point to the **Right** (matching drone $+Y$ / starboard).
    - Camera $+Y$ axis must point **Backward** (matching camera $V$ coordinates going down).
-   - Camera mount parameters must be updated in `config/simulation.yaml` if physical rotation or off-center mounting is used.
+   - Camera mount parameters must be updated in `simulation/config/simulation.yaml` if physical rotation or off-center mounting is used.
 
 ---
 
@@ -39,7 +39,15 @@ On the companion computer (Ubuntu 22.04 LTS with ROS2 Humble installed):
    ```bash
    git clone https://github.com/Aittrah/GPS-DENIED-SYSTEM.git
    cd GPS-DENIED-SYSTEM
-   pip install -e ".[dev]"
+   sudo apt install python3-venv
+   python3 -m venv .venv-run
+   source .venv-run/bin/activate
+   pip3 install -r requirements.txt
+   pip3 install -e ".[dev]"
+   source /opt/ros/humble/setup.bash
+   rosdep install --from-paths . --ignore-src -r -y --rosdistro humble
+   colcon build --packages-select vns --symlink-install
+   source install/setup.bash
    ```
 2. **Camera Drivers:**
    Ensure `v4l-utils` is installed and you can capture raw frames:
@@ -65,10 +73,10 @@ To blend external vision estimates into PX4's EKF2 state estimator, configure th
 
 ## 5. System Calibration and Verification
 
-1. **Intrinsics Calibration:** Run standard OpenCV chessboard calibration to determine `fx`, `fy`, `cx`, and `cy`. Update these parameters in `config.yaml`.
+1. **Intrinsics Calibration:** Run standard OpenCV chessboard calibration to determine `fx`, `fy`, `cx`, and `cy`. Update these parameters in `simulation/config/simulation.yaml`.
 2. **MAVLink Connectivity Test:**
    Verify connection to the flight controller:
    ```bash
-   vns --config config/simulation.yaml
+   vns --config simulation/config/simulation.yaml
    ```
 3. **Safety Failsafe:** Set the Flight Controller failsafe parameter `COM_OBL_ACT` to `Return to Launch` (RTL) or `Land` in case external visual navigation drops out.
