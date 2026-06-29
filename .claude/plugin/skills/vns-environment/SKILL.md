@@ -75,7 +75,7 @@ description: Quick-reference card for the VNS development environment — binari
 |------|----------|
 | `/home/hp/GPS-DENIED-SYSTEM/` | Project root |
 | `simulation/models/` | Gazebo UAV/world models |
-| `simulation/worlds/` | World SDF files (vns_test_world.sdf) |
+| `simulation/worlds/` | World SDF files (uav_test_world.sdf full campus; uav_localization_test.sdf map-only + static cam) |
 | `simulation/scripts/` | build_reference_database.py, capture_reference_images.py, generate_accuracy_report.py, visual_navigation.py, test_run.py, cli.py |
 | `simulation/database/` | qau_campus.vnsdb, images/, qau_reference_metadata.yaml |
 | `simulation/launch/` | full_simulation.launch.py, UAV_simulation.launch.py, px4_sitl.launch.py |
@@ -95,10 +95,10 @@ description: Quick-reference card for the VNS development environment — binari
 
 | Topic | Message Type | Source |
 |-------|-------------|--------|
-| `/vns_drone/camera` | `sensor_msgs/Image` | `libgazebo_ros_camera.so` in model.sdf |
-| `/vns_drone/imu` | `sensor_msgs/Imu` | `libgazebo_ros_imu_sensor.so` in model.sdf |
-| `/vns_drone/gps` | `sensor_msgs/NavSatFix` | `libgazebo_ros_gps_sensor.so` in model.sdf |
-| `/vns_drone/ground_truth` | `nav_msgs/Odometry` | `libgazebo_ros_p3d.so` in model.sdf |
+| `/vns_drone/downward_camera/image_raw` | `sensor_msgs/Image` | `libgazebo_ros_camera.so` in model.sdf |
+| `/vns_drone/imu` | `sensor_msgs/Imu` | `libgazebo_ros_imu_sensor.so` (inside `<sensor type="imu">`) |
+| `/vns_drone/gps_raw` → `/vns_drone/gps` | `sensor_msgs/NavSatFix` | `libgazebo_ros_gps_sensor.so` (gated by gps_gate_node) |
+| `/vns_drone/ground_truth` | `nav_msgs/Odometry` | `libgazebo_ros_p3d.so` (remap `odom:=ground_truth`) |
 | `/vns/vision_pose` | `geometry_msgs/PoseStamped` | VNS node output |
 | `/vns/status` | (custom) | VNS node output |
 

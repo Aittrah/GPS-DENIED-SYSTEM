@@ -22,12 +22,26 @@ build/
 .env
 .idea/
 .vscode/
+node_modules/
+dist/
+build/
 
-# OS
-.DS_Store
-Thumbs.db
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
 
-# Large data files
-data/satellite_tiles/
-data/database/*.pkl
-data/kml/fly_to.kml
+# VNS runtime artifacts
+logs/
+reports/
+assign.ipynb
+
+# Virtual environments
+.venv*/
+
+# ROS 2 / colcon build artifacts
+install/
+log/
+
+# Claude Code local settings
+.claude/settings.local.json

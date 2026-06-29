@@ -1,238 +1,281 @@
 #!/usr/bin/env python3
 """
-Full VNS Simulation Launch File
+Full VNS Simulation Launch File (Gazebo Classic 11 + ROS 2 Humble)
 
 Launches the complete simulation stack:
-1. Gazebo with QAU Campus world
-2. PX4 SITL
-3. VNS node
-4. All necessary bridges and tools
+1. Gazebo Classic with the QAU Campus world (gzserver/gzclient)
+2. PX4 SITL connected via MAVLink UDP
+3. ROS 2 <-> Gazebo bridges using gazebo_ros plugins (declared in the SDF)
+4. VNS node
 
 Usage:
     ros2 launch vns_simulation full_simulation.launch.py
-    
-    # Test GNSS-denied scenario:
+
+    # GNSS-denied scenario:
     ros2 launch vns_simulation full_simulation.launch.py gps_enabled:=false
-    
-    # Headless mode for CI/testing:
+
+    # Headless (gzserver only, no GUI):
     ros2 launch vns_simulation full_simulation.launch.py headless:=true
+
+Notes for Gazebo Classic:
+    - There is no `gz sim` command and no `ros_gz_bridge`. Sensors are exposed
+      to ROS 2 by adding <plugin> tags to the SDF model (libgazebo_ros_camera,
+      libgazebo_ros_imu_sensor, libgazebo_ros_gps_sensor, libgazebo_ros_p3d).
+    - Models are spawned via the `spawn_entity.py` script from gazebo_ros.
+    - The model resource path is GAZEBO_MODEL_PATH, not GZ_SIM_RESOURCE_PATH.
 """
 
-import os
 from pathlib import Path
+import tempfile
 
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     ExecuteProcess,
-    GroupAction,
-    IncludeLaunchDescription,
     LogInfo,
+    OpaqueFunction,
     SetEnvironmentVariable,
     TimerAction,
 )
 from launch.conditions import IfCondition, UnlessCondition
-from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-from launch_ros.actions import Node, PushRosNamespace
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
+from vns.utils.camera_topic import (
+    DEFAULT_CAMERA_TOPIC,
+    render_sdf_with_camera_topic,
+)
+from vns.utils.paths import (
+    prepend_search_path,
+    resolve_simulation_root,
+    resolve_vns_python,
+)
+
+
+def _spawn_drone(context, *, drone_sdf: str):
+    camera_topic = LaunchConfiguration('camera_topic').perform(context)
+    resolved_sdf = drone_sdf
+
+    if camera_topic != DEFAULT_CAMERA_TOPIC:
+        rendered_sdf = render_sdf_with_camera_topic(
+            Path(drone_sdf).read_text(encoding='utf-8'),
+            camera_topic,
+        )
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            encoding='utf-8',
+            suffix='.sdf',
+            prefix='iris_downward_cam_',
+            delete=False,
+        ) as handle:
+            handle.write(rendered_sdf)
+            resolved_sdf = handle.name
+
+    return [
+        Node(
+            package='gazebo_ros',
+            executable='spawn_entity.py',
+            name='spawn_iris',
+            arguments=[
+                '-entity', 'iris_downward_cam',
+                '-file', resolved_sdf,
+                '-x', '0', '-y', '0', '-z', '1',
+            ],
+            output='screen',
+        )
+    ]
 
 
 def generate_launch_description():
     """Generate the full simulation launch description."""
-    
-    # Get package directories
-    pkg_dir = Path(__file__).parent.parent
-    launch_dir = pkg_dir / 'launch'
-    worlds_dir = pkg_dir / 'worlds'
-    models_dir = pkg_dir / 'models'
-    config_dir = pkg_dir / 'config'
-    database_dir = pkg_dir / 'database'
-    
+
+    simulation_root = resolve_simulation_root(Path(__file__).resolve())
+    worlds_dir = simulation_root / 'worlds'
+    models_dir = simulation_root / 'models'
+    config_dir = simulation_root / 'config'
+    scripts_dir = simulation_root / 'scripts'
+    database_dir = simulation_root / 'database'
+
+    world_file = str(worlds_dir / 'uav_test_world.sdf')
+    drone_sdf = str(models_dir / 'iris_downward_cam' / 'model.sdf')
+
     # ==================== Launch Arguments ====================
-    
+
     gps_enabled_arg = DeclareLaunchArgument(
         'gps_enabled',
         default_value='true',
-        description='Enable GPS sensor in simulation'
+        description='Enable GPS sensor bridge (the SDF still owns sensor on/off)'
     )
-    
+
     headless_arg = DeclareLaunchArgument(
         'headless',
         default_value='false',
-        description='Run simulation in headless mode'
+        description='Run gzserver only (no gzclient GUI)'
     )
-    
+
     px4_dir_arg = DeclareLaunchArgument(
         'px4_dir',
-        default_value='/opt/px4/PX4-Autopilot',
+        default_value=str(Path.home() / 'PX4-Autopilot'),
         description='Path to PX4-Autopilot directory'
     )
-    
+
     qgc_arg = DeclareLaunchArgument(
         'launch_qgc',
         default_value='false',
         description='Launch QGroundControl'
     )
-    
+
     rviz_arg = DeclareLaunchArgument(
         'launch_rviz',
         default_value='false',
         description='Launch RViz for visualization'
     )
-    
+
     record_arg = DeclareLaunchArgument(
         'record_bag',
         default_value='false',
         description='Record ROS bag for analysis'
     )
-    
-    # ==================== Environment Setup ====================
-    
-    gz_model_path = SetEnvironmentVariable(
-        'GZ_SIM_RESOURCE_PATH',
-        str(models_dir)
+
+    camera_topic_arg = DeclareLaunchArgument(
+        'camera_topic',
+        default_value=DEFAULT_CAMERA_TOPIC,
+        description='ROS image topic shared by the Gazebo camera and vns_node'
     )
-    
-    # ==================== Gazebo Simulation ====================
-    
-    gazebo_gui = ExecuteProcess(
-        cmd=['gz', 'sim', '-r', str(worlds_dir / 'vns_test_world.sdf')],
+
+    vns_python_arg = DeclareLaunchArgument(
+        'vns_python',
+        default_value=resolve_vns_python(simulation_root),
+        description='Python interpreter used for VNS ROS nodes and helpers'
+    )
+
+    # ==================== Environment Setup ====================
+
+    # Gazebo Classic uses GAZEBO_MODEL_PATH (not GZ_SIM_RESOURCE_PATH)
+    gazebo_model_path = SetEnvironmentVariable(
+        'GAZEBO_MODEL_PATH',
+        prepend_search_path(models_dir, 'GAZEBO_MODEL_PATH'),
+    )
+
+    gazebo_resource_path = SetEnvironmentVariable(
+        'GAZEBO_RESOURCE_PATH',
+        prepend_search_path(worlds_dir, 'GAZEBO_RESOURCE_PATH'),
+    )
+
+    # Disable the online model database so gzserver does not block on startup
+    # trying to fetch models from models.gazebosim.org (slow/offline -> hang).
+    gazebo_model_db = SetEnvironmentVariable('GAZEBO_MODEL_DATABASE_URI', '')
+
+    # ==================== Gazebo Classic Simulation ====================
+
+    # gzserver (physics + sensors, always launched)
+    gzserver = ExecuteProcess(
+        cmd=[
+            'gzserver',
+            '--verbose',
+            '-s', 'libgazebo_ros_init.so',     # /clock, ROS time
+            '-s', 'libgazebo_ros_factory.so',  # spawn_entity service
+            world_file,
+        ],
+        output='screen',
+    )
+
+    # gzclient (GUI) only if not headless
+    gzclient = ExecuteProcess(
+        cmd=['gzclient', '--verbose'],
         output='screen',
         condition=UnlessCondition(LaunchConfiguration('headless'))
     )
-    
-    gazebo_headless = ExecuteProcess(
-        cmd=['gz', 'sim', '-r', '-s', str(worlds_dir / 'vns_test_world.sdf')],
-        output='screen',
-        condition=IfCondition(LaunchConfiguration('headless'))
-    )
-    
-    # Spawn drone after Gazebo starts
+
+    # Spawn the drone via gazebo_ros spawn_entity.py (waits for /spawn_entity service)
     spawn_drone = TimerAction(
-        period=3.0,
+        period=4.0,
+        actions=[
+            OpaqueFunction(function=_spawn_drone, kwargs={'drone_sdf': drone_sdf})
+        ]
+    )
+
+    # ==================== ROS-Gazebo Bridges ====================
+    #
+    # Gazebo Classic plugins in the SDF publish sensor data on ROS 2 topics:
+    #   camera, IMU, ground-truth -> /vns_drone/* (direct)
+    #   GPS -> /vns_drone/gps_raw (gated by gps_gate_node below)
+
+    # GPS gate: relays gps_raw -> gps when enabled, silences for denial.
+    # Toggle at runtime:
+    #   ros2 service call /vns/set_gps_enabled std_srvs/srv/SetBool "{data: false}"
+    gps_gate = TimerAction(
+        period=5.0,
         actions=[
             ExecuteProcess(
                 cmd=[
-                    'gz', 'service', '-s', '/world/qau_campus_world/create',
-                    '--reqtype', 'gz.msgs.EntityFactory',
-                    '--reptype', 'gz.msgs.Boolean',
-                    '--timeout', '5000',
-                    '--req',
-                    f'sdf_filename: "{models_dir}/vns_drone/model.sdf", '
-                    'name: "vns_drone", '
-                    'pose: {position: {x: 0, y: 0, z: 1}}'
+                    LaunchConfiguration('vns_python'),
+                    str(scripts_dir / 'gps_gate_node.py'),
+                    '--ros-args',
+                    '-p', ['gps_enabled:=', LaunchConfiguration('gps_enabled')],
                 ],
-                output='screen'
+                output='screen',
             )
         ]
     )
-    
-    # ==================== ROS-Gazebo Bridges ====================
-    
-    bridges = TimerAction(
-        period=5.0,
+
+    # ==================== PX4 SITL ====================
+    #
+    # In Gazebo Classic we use PX4's "none_iris" target: PX4 runs standalone
+    # and talks to Gazebo through the existing model plugins / MAVLink UDP
+    # rather than the newer gz_<vehicle> targets that need Gazebo Harmonic.
+
+    px4_sitl = TimerAction(
+        period=6.0,
         actions=[
-            # Camera bridge
-            Node(
-                package='ros_gz_image',
-                executable='image_bridge',
-                name='camera_bridge',
-                arguments=['/world/qau_campus_world/model/vns_drone/link/base_link/sensor/vns_camera/image'],
-                remappings=[
-                    ('/world/qau_campus_world/model/vns_drone/link/base_link/sensor/vns_camera/image',
-                     '/vns_drone/camera')
-                ],
-                output='screen'
-            ),
-            
-            # IMU bridge
-            Node(
-                package='ros_gz_bridge',
-                executable='parameter_bridge',
-                name='imu_bridge',
-                arguments=[
-                    '/world/qau_campus_world/model/vns_drone/link/base_link/sensor/imu_sensor/imu'
-                    '@sensor_msgs/msg/Imu@gz.msgs.IMU'
-                ],
-                remappings=[
-                    ('/world/qau_campus_world/model/vns_drone/link/base_link/sensor/imu_sensor/imu',
-                     '/vns_drone/imu')
-                ],
-                output='screen'
-            ),
-            
-            # GPS bridge (conditional)
-            Node(
-                package='ros_gz_bridge',
-                executable='parameter_bridge',
-                name='gps_bridge',
-                arguments=[
-                    '/world/qau_campus_world/model/vns_drone/link/base_link/sensor/gps_sensor/navsat'
-                    '@sensor_msgs/msg/NavSatFix@gz.msgs.NavSat'
-                ],
-                remappings=[
-                    ('/world/qau_campus_world/model/vns_drone/link/base_link/sensor/gps_sensor/navsat',
-                     '/vns_drone/gps')
+            ExecuteProcess(
+                cmd=[
+                    'bash', '-c',
+                    'cd "$0" && '
+                    'HEADLESS=1 make px4_sitl none_iris',
+                    LaunchConfiguration('px4_dir'),
                 ],
                 output='screen',
-                condition=IfCondition(LaunchConfiguration('gps_enabled'))
-            ),
-            
-            # Ground truth pose bridge
-            Node(
-                package='ros_gz_bridge',
-                executable='parameter_bridge',
-                name='pose_bridge',
-                arguments=[
-                    '/model/vns_drone/pose@geometry_msgs/msg/PoseStamped@gz.msgs.Pose'
-                ],
-                remappings=[
-                    ('/model/vns_drone/pose', '/vns_drone/ground_truth')
-                ],
-                output='screen'
-            ),
+            )
         ]
     )
-    
+
     # ==================== VNS Node ====================
-    
+
     vns_node = TimerAction(
-        period=8.0,
+        period=10.0,
         actions=[
             Node(
                 package='vns',
                 executable='vns_node',
                 name='vns_node',
+                prefix=[LaunchConfiguration('vns_python')],
                 parameters=[{
                     'config_file': str(config_dir / 'simulation.yaml'),
                     'database_path': str(database_dir / 'qau_campus.vnsdb'),
+                    'camera_topic': LaunchConfiguration('camera_topic'),
                     'simulation_mode': True,
                 }],
-                remappings=[
-                    ('camera/image_raw', '/vns_drone/camera'),
-                    ('gps/fix', '/vns_drone/gps'),
-                    ('imu/data', '/vns_drone/imu'),
-                    ('ground_truth', '/vns_drone/ground_truth'),
-                ],
+                # camera_topic keeps the Gazebo publisher and node subscriber
+                # aligned without ROS remap rules.
                 output='screen'
             )
         ]
     )
-    
+
     # ==================== Optional Tools ====================
-    
-    # QGroundControl
+
     qgc = ExecuteProcess(
         cmd=['QGroundControl.AppImage'],
         output='screen',
         condition=IfCondition(LaunchConfiguration('launch_qgc'))
     )
-    
-    # ROS bag recording
+
     bag_record = ExecuteProcess(
         cmd=[
             'ros2', 'bag', 'record',
-            '/vns_drone/camera',
+            LaunchConfiguration('camera_topic'),
+            '/vns_drone/gps_raw',
             '/vns_drone/gps',
             '/vns_drone/imu',
             '/vns_drone/ground_truth',
@@ -243,21 +286,22 @@ def generate_launch_description():
         output='screen',
         condition=IfCondition(LaunchConfiguration('record_bag'))
     )
-    
-    # ==================== Info Messages ====================
-    
+
+    # ==================== Info ====================
+
     startup_info = LogInfo(
         msg='\n'
             '========================================\n'
             '  VNS Full Simulation Starting\n'
+            '  Gazebo Classic 11 + ROS 2 Humble\n'
             '  Location: QAU Campus, Islamabad\n'
             '========================================\n'
     )
-    
+
     return LaunchDescription([
         # Info
         startup_info,
-        
+
         # Arguments
         gps_enabled_arg,
         headless_arg,
@@ -265,21 +309,28 @@ def generate_launch_description():
         qgc_arg,
         rviz_arg,
         record_arg,
-        
+        camera_topic_arg,
+        vns_python_arg,
+
         # Environment
-        gz_model_path,
-        
+        gazebo_model_path,
+        gazebo_resource_path,
+        gazebo_model_db,
+
         # Gazebo
-        gazebo_gui,
-        gazebo_headless,
+        gzserver,
+        gzclient,
         spawn_drone,
-        
-        # Bridges
-        bridges,
-        
+
+        # GPS gate (gps_raw -> gps, toggleable at runtime)
+        gps_gate,
+
+        # PX4
+        px4_sitl,
+
         # VNS
         vns_node,
-        
+
         # Optional tools
         qgc,
         bag_record,

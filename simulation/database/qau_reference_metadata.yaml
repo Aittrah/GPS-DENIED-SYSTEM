@@ -23,34 +23,41 @@ database:
 
 # Reference image capture points
 # These define locations where reference images should be captured
-# for building the visual navigation database
+# for building the visual navigation database.
+#
+# NOTE: per-entry `altitude` is the GROUND / TERRAIN MSL datum under the tile
+# (== database.center.altitude == simulation geo_reference.origin_altitude, 550 m).
+# It is consumed by pose recovery as `height = drone_altitude - entry.altitude`
+# (the camera's AGL imaging height), NOT as the camera capture altitude. Do not
+# set these to capture heights (e.g. 600-620 m) — that biases off-center pose
+# recovery. See specs/FR-11.md.
 reference_points:
   # Central area around Admin Building
   - id: "qau_admin_01"
     latitude: 33.7470
     longitude: 73.1370
-    altitude: 580
+    altitude: 550
     heading: 0
     description: "Admin Building - North view"
     
   - id: "qau_admin_02"
     latitude: 33.7470
     longitude: 73.1370
-    altitude: 580
+    altitude: 550
     heading: 90
     description: "Admin Building - East view"
     
   - id: "qau_admin_03"
     latitude: 33.7470
     longitude: 73.1370
-    altitude: 580
+    altitude: 550
     heading: 180
     description: "Admin Building - South view"
     
   - id: "qau_admin_04"
     latitude: 33.7470
     longitude: 73.1370
-    altitude: 580
+    altitude: 550
     heading: 270
     description: "Admin Building - West view"
 
@@ -58,14 +65,14 @@ reference_points:
   - id: "qau_library_01"
     latitude: 33.7472
     longitude: 73.1378
-    altitude: 580
+    altitude: 550
     heading: 0
     description: "Library - North view"
     
   - id: "qau_library_02"
     latitude: 33.7472
     longitude: 73.1378
-    altitude: 580
+    altitude: 550
     heading: 180
     description: "Library - South view"
 
@@ -73,14 +80,14 @@ reference_points:
   - id: "qau_physics_01"
     latitude: 33.7476
     longitude: 73.1364
-    altitude: 580
+    altitude: 550
     heading: 45
     description: "Physics Dept - Northeast view"
     
   - id: "qau_physics_02"
     latitude: 33.7476
     longitude: 73.1364
-    altitude: 580
+    altitude: 550
     heading: 225
     description: "Physics Dept - Southwest view"
 
@@ -88,7 +95,7 @@ reference_points:
   - id: "qau_chemistry_01"
     latitude: 33.7477
     longitude: 73.1377
-    altitude: 580
+    altitude: 550
     heading: 0
     description: "Chemistry Dept - North view"
 
@@ -96,7 +103,7 @@ reference_points:
   - id: "qau_biology_01"
     latitude: 33.7464
     longitude: 73.1379
-    altitude: 580
+    altitude: 550
     heading: 90
     description: "Biology Dept - East view"
 
@@ -104,14 +111,14 @@ reference_points:
   - id: "qau_cs_01"
     latitude: 33.7465
     longitude: 73.1362
-    altitude: 580
+    altitude: 550
     heading: 0
     description: "CS Dept - North view"
     
   - id: "qau_cs_02"
     latitude: 33.7465
     longitude: 73.1362
-    altitude: 580
+    altitude: 550
     heading: 180
     description: "CS Dept - South view"
 
@@ -119,14 +126,14 @@ reference_points:
   - id: "qau_mosque_01"
     latitude: 33.7479
     longitude: 73.1367
-    altitude: 580
+    altitude: 550
     heading: 0
     description: "Mosque - North view with minaret"
     
   - id: "qau_mosque_02"
     latitude: 33.7479
     longitude: 73.1367
-    altitude: 580
+    altitude: 550
     heading: 180
     description: "Mosque - South view"
 
@@ -134,7 +141,7 @@ reference_points:
   - id: "qau_tower_01"
     latitude: 33.7470
     longitude: 73.1382
-    altitude: 590
+    altitude: 550
     heading: 270
     description: "Water Tower - West view"
 
@@ -142,14 +149,14 @@ reference_points:
   - id: "qau_hostel_01"
     latitude: 33.7472
     longitude: 73.1358
-    altitude: 580
+    altitude: 550
     heading: 90
     description: "Hostel Block 1 - East view"
     
   - id: "qau_hostel_02"
     latitude: 33.7467
     longitude: 73.1358
-    altitude: 580
+    altitude: 550
     heading: 90
     description: "Hostel Block 2 - East view"
 
@@ -157,7 +164,7 @@ reference_points:
   - id: "qau_sports_01"
     latitude: 33.7459
     longitude: 73.1370
-    altitude: 580
+    altitude: 550
     heading: 0
     description: "Sports Complex - North view"
 
@@ -166,35 +173,35 @@ reference_points:
   - id: "grid_nw"
     latitude: 33.7480
     longitude: 73.1355
-    altitude: 600
+    altitude: 550
     heading: 135
     description: "Grid NW - Southeast view"
     
   - id: "grid_ne"
     latitude: 33.7480
     longitude: 73.1385
-    altitude: 600
+    altitude: 550
     heading: 225
     description: "Grid NE - Southwest view"
     
   - id: "grid_sw"
     latitude: 33.7460
     longitude: 73.1355
-    altitude: 600
+    altitude: 550
     heading: 45
     description: "Grid SW - Northeast view"
     
   - id: "grid_se"
     latitude: 33.7460
     longitude: 73.1385
-    altitude: 600
+    altitude: 550
     heading: 315
     description: "Grid SE - Northwest view"
     
   - id: "grid_center"
     latitude: 33.7470
     longitude: 73.1370
-    altitude: 620
+    altitude: 550
     heading: 0
     description: "Grid Center - Overhead view"
 

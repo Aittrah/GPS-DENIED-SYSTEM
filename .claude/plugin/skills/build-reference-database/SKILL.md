@@ -49,7 +49,7 @@ python3 simulation/scripts/capture_reference_images.py \
 - `simulation/database/images/<point_id>.jpg` — one JPG per reference point
 - `simulation/database/images/database_index.yaml` — image index consumed by Step 3
 
-The `--synthetic` flag generates textured images offline (no live Gazebo required).  To capture from a running Gazebo simulation, omit `--synthetic` and ensure the camera topic `/vns_drone/camera` is publishing.
+The `--synthetic` flag generates textured images offline (no live Gazebo required).  To capture from a running Gazebo simulation, omit `--synthetic` and ensure the camera topic `/vns_drone/downward_camera/image_raw` is publishing.
 
 ---
 

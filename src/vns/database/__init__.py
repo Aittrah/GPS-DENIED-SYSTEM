@@ -1,3 +1,3 @@
-from .reference_db import ReferenceDatabase, DatabaseEntry
+from .reference_db import DatabaseEntry, GeoBounds, ReferenceDatabase
 
-__all__ = ["ReferenceDatabase", "DatabaseEntry"]
+__all__ = ["DatabaseEntry", "GeoBounds", "ReferenceDatabase"]

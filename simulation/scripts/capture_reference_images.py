@@ -161,6 +161,7 @@ def generate_database_index(
     config_path: str
 ) -> None:
     """Generate database index file from captured images."""
+    output_dir = output_dir.resolve()
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     
@@ -178,9 +179,11 @@ def generate_database_index(
     }
     
     for img in captured_images:
+        image_path = Path(img.filepath).resolve()
+        relative_path = image_path.relative_to(output_dir).as_posix()
         index['images'].append({
             'id': img.id,
-            'filepath': img.filepath,
+            'filepath': relative_path,
             'latitude': img.latitude,
             'longitude': img.longitude,
             'altitude': img.altitude,
@@ -270,9 +273,9 @@ def main():
     args = parser.parse_args()
     
     # Resolve paths
-    script_dir = Path(__file__).parent
-    config_path = script_dir / args.config
-    output_dir = script_dir / args.output
+    script_dir = Path(__file__).resolve().parent
+    config_path = (script_dir / args.config).resolve()
+    output_dir = (script_dir / args.output).resolve()
     
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
