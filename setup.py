@@ -45,6 +45,7 @@ setup(
     install_requires=[
         "numpy",
         "opencv-python-headless",
+        "Pillow",
         "PyYAML",
         "pydantic>=2,<3",
         "requests",

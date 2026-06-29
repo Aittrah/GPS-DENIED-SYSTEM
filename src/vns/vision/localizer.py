@@ -23,7 +23,7 @@ class VisualLocalizer:
     Pipeline stages:
         1. Preprocess (resize / grayscale / CLAHE)
         2. ORB feature extraction
-        3. Coarse FLANN/LSH retrieval
+        3. Coarse retrieval (FLANN/LSH or BoVW)
         4. Geometric verification (ratio test + RANSAC homography)
         5. Best-match selection
         6. Pose recovery
@@ -74,19 +74,17 @@ class VisualLocalizer:
             scale_factor=feat_cfg.get("scale_factor", 1.2),
             n_levels=feat_cfg.get("n_levels", 8),
         )
-        self._retrieval = RetrievalIndex()
+        self._retrieval = RetrievalIndex.from_config(retrieval_cfg, database)
         self._verifier = GeometricVerifier(
             ratio_test_threshold=match_cfg.get("ratio_test_threshold", 0.75),
             min_matches=match_cfg.get("min_matches", 10),
         )
         self._pose_recovery = PoseRecovery()
-
-        entries = list(database.entries.values())
-        self._retrieval.build_index(entries)
         logger.info(
-            "VisualLocalizer ready: %d entries, top_k=%d",
-            len(entries),
+            "VisualLocalizer ready: %d entries, top_k=%d, retrieval=%s",
+            len(database.entries),
             self._top_k,
+            self._retrieval.backend_name,
         )
 
     # ------------------------------------------------------------------
@@ -130,14 +128,15 @@ class VisualLocalizer:
         if not candidates:
             return self._fail("no_retrieval_candidates", ts)
         logger.debug(
-            "Retrieval: %d candidates %s",
+            "Retrieval (%s): %d candidates %s",
+            self._retrieval.backend_name,
             len(candidates),
             candidates,
         )
 
         # 4 — Geometric verification
         results: List[VerificationResult] = []
-        for entry_id, _vote_count in candidates:
+        for entry_id, _score in candidates:
             entry = self._database.entries.get(entry_id)
             if entry is None:
                 continue

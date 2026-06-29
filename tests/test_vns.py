@@ -22,7 +22,10 @@ from vns.vision.extractor import FeatureExtractor
 from vns.vision.matcher import FeatureMatcher
 from vns.core.gnss_monitor import GnssMonitor, GnssState
 from vns.core.blender import PositionBlender
+from vns.core.runtime import FrameProcessingResult
+from vns.validation import GroundTruthSample, JsonlEvaluationLogger
 from vns.validation.accuracy_report import AccuracyThresholds, load_and_generate_report
+from vns.vision.types import LocalizationResult
 
 class TestVnsCoordinates(unittest.TestCase):
     """Test coordinate conversions (WGS-84)."""
@@ -266,6 +269,168 @@ class TestVnsValidation(unittest.TestCase):
         # Confirm report output files exist
         self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "report_ground_truth_test.json")))
         self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "report_ground_truth_test.md")))
+
+
+class TestEvaluationJsonlLogger(unittest.TestCase):
+    """Test packaged runtime JSONL evaluation logging."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir)
+
+    @staticmethod
+    def _make_result(
+        *,
+        success: bool = True,
+        timestamp: float = 100.0,
+        confidence: float = 0.92,
+        navigation_mode: str = "VISION",
+        reason: str = "ok",
+    ) -> FrameProcessingResult:
+        localization = LocalizationResult(
+            success=success,
+            confidence=confidence,
+            inlier_count=24,
+            matched_ref_id="grid_center" if success else None,
+            reason=reason,
+            pose_ned=(0.0, 0.0, -30.0) if success else None,
+            pose_geodetic=(33.74705, 73.13708, 580.1) if success else None,
+            yaw_rad=math.radians(5.0) if success else 0.0,
+            timestamp=timestamp,
+        )
+        return FrameProcessingResult(
+            success=success,
+            navigation_mode=navigation_mode,
+            reason=reason,
+            blended_pose=(33.74704, 73.13707, 580.2) if success else None,
+            localization=localization,
+        )
+
+    def test_logger_writes_legacy_compatible_schema(self):
+        logger = JsonlEvaluationLogger(enabled=True, log_dir=self.temp_dir)
+        ground_truth = GroundTruthSample(
+            latitude=33.74700,
+            longitude=73.13700,
+            altitude=580.0,
+            heading_deg=4.0,
+            timestamp=99.5,
+        )
+        result = self._make_result()
+
+        wrote = logger.write_frame(
+            timestamp=100.0,
+            ros_time=100.0,
+            result=result,
+            ground_truth=ground_truth,
+            gnss_status="DENIED",
+            record_without_ground_truth=False,
+        )
+        log_path = logger.log_path
+        logger.close()
+
+        self.assertTrue(wrote)
+        self.assertIsNotNone(log_path)
+
+        line = log_path.read_text(encoding="utf-8").splitlines()[0]
+        payload = json.loads(line)
+
+        required_fields = {
+            "timestamp",
+            "estimated_lat",
+            "estimated_lon",
+            "estimated_alt",
+            "true_lat",
+            "true_lon",
+            "true_alt",
+            "estimated_heading",
+            "true_heading",
+            "horizontal_error",
+            "vertical_error",
+            "heading_error",
+            "mode",
+            "navigation_mode",
+            "vision_confidence",
+            "localization_success",
+            "gnss_status",
+            "failure_reason",
+        }
+        for field in required_fields:
+            self.assertIn(field, payload)
+        self.assertTrue(payload["ground_truth_available"])
+        self.assertEqual(payload["mode"], "VISION")
+        self.assertEqual(payload["gnss_status"], "DENIED")
+        self.assertIsNone(payload["failure_reason"])
+
+        thresholds = AccuracyThresholds()
+        report = load_and_generate_report(str(log_path), self.temp_dir, thresholds)
+        self.assertEqual(report.total_samples, 1)
+        self.assertTrue(
+            os.path.exists(os.path.join(self.temp_dir, f"report_{log_path.stem}.json"))
+        )
+        self.assertTrue(
+            os.path.exists(os.path.join(self.temp_dir, f"report_{log_path.stem}.md"))
+        )
+
+    def test_report_skips_estimate_only_rows_with_null_errors(self):
+        logger = JsonlEvaluationLogger(enabled=True, log_dir=self.temp_dir)
+        result = self._make_result()
+
+        wrote_estimate_only = logger.write_frame(
+            timestamp=100.0,
+            ros_time=100.0,
+            result=result,
+            ground_truth=None,
+            gnss_status="DENIED",
+            record_without_ground_truth=True,
+        )
+        wrote_ground_truth = logger.write_frame(
+            timestamp=101.0,
+            ros_time=101.0,
+            result=result,
+            ground_truth=GroundTruthSample(
+                latitude=33.74700,
+                longitude=73.13700,
+                altitude=580.0,
+                heading_deg=4.0,
+                timestamp=100.5,
+            ),
+            gnss_status="DENIED",
+            record_without_ground_truth=True,
+        )
+        log_path = logger.log_path
+        logger.close()
+
+        self.assertTrue(wrote_estimate_only)
+        self.assertTrue(wrote_ground_truth)
+        self.assertIsNotNone(log_path)
+
+        thresholds = AccuracyThresholds()
+        report = load_and_generate_report(str(log_path), self.temp_dir, thresholds)
+        self.assertEqual(report.total_samples, 1)
+
+    def test_logger_disables_when_log_directory_is_invalid(self):
+        blocked_path = os.path.join(self.temp_dir, "blocked")
+        with open(blocked_path, "w", encoding="utf-8") as handle:
+            handle.write("not a directory")
+
+        logger = JsonlEvaluationLogger(enabled=True, log_dir=blocked_path)
+        result = self._make_result()
+
+        wrote = logger.write_frame(
+            timestamp=100.0,
+            ros_time=None,
+            result=result,
+            ground_truth=None,
+            gnss_status="DENIED",
+            record_without_ground_truth=True,
+        )
+        logger.close()
+
+        self.assertFalse(logger.enabled)
+        self.assertIsNone(logger.log_path)
+        self.assertFalse(wrote)
 
 if __name__ == "__main__":
     unittest.main()

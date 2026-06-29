@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import pytest
 
+from vns.vision.bovw_retrieval import BoVWIndex
 from vns.vision.localizer import VisualLocalizer
 from vns.vision.types import LocalizationResult
 
@@ -84,3 +85,54 @@ class TestVisualLocalizer:
             assert isinstance(r.reason, str)
             assert isinstance(r.yaw_rad, float)
             assert isinstance(r.timestamp, float)
+
+    def test_localize_with_bovw_mode(
+        self,
+        sample_bovw_config,
+        sample_bovw_database,
+        textured_image,
+    ):
+        loc = VisualLocalizer(sample_bovw_config, sample_bovw_database)
+        result = loc.localize(textured_image, altitude=580.0, heading_deg=0.0)
+
+        assert loc._retrieval.backend_name == "bovw"
+        assert result.success
+        assert result.matched_ref_id == "synth_001"
+
+    def test_bovw_query_path_is_used(
+        self,
+        monkeypatch,
+        sample_bovw_config,
+        sample_bovw_database,
+        textured_image,
+    ):
+        calls = {"count": 0}
+        original_query = BoVWIndex.query
+
+        def spy_query(self, descriptors, k=5):
+            calls["count"] += 1
+            return original_query(self, descriptors, k=k)
+
+        monkeypatch.setattr(BoVWIndex, "query", spy_query)
+
+        loc = VisualLocalizer(sample_bovw_config, sample_bovw_database)
+        result = loc.localize(textured_image, altitude=580.0, heading_deg=0.0)
+
+        assert result.success
+        assert calls["count"] == 1
+
+    def test_bovw_missing_index_raises(self, sample_bovw_config, sample_database):
+        with pytest.raises(ValueError, match="BoVW retrieval selected"):
+            VisualLocalizer(sample_bovw_config, sample_database)
+
+    def test_bovw_can_fallback_to_flann(
+        self,
+        sample_bovw_fallback_config,
+        sample_database,
+        textured_image,
+    ):
+        loc = VisualLocalizer(sample_bovw_fallback_config, sample_database)
+        result = loc.localize(textured_image, altitude=580.0, heading_deg=0.0)
+
+        assert loc._retrieval.backend_name == "flann"
+        assert result.success

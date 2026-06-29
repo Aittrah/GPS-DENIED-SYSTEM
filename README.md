@@ -17,26 +17,26 @@ Built as Final Year Project at IIT, Quaid-i-Azam University Islamabad (2022–20
 
 ## Quick Start
 
-### 1. Installation
+### 1. Python Environment and Tests
 
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd vns
+cd GPS-DENIED-SYSTEM
 
-# Create virtual environment (recommended)
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# or: .venv\Scripts\activate  # Windows
+# Ubuntu may require this before `python3 -m venv` works
+sudo apt install python3-venv
 
-# Install in development mode
-make install-dev
-```
+# Create the project virtual environment
+python3 -m venv .venv-run
+source .venv-run/bin/activate
 
-### Install Dependencies
+# Install Python runtime dependencies and developer tooling
+pip3 install -r requirements.txt
+pip3 install -e ".[dev]"
 
-```bash
-pip install opencv-python numpy Pillow
+# Run the Python test suite
+python3 -m pytest tests/ -q
 ```
 
 ### Run the App
@@ -73,17 +73,28 @@ Key configuration sections:
 4. **Install QGroundControl** (optional):
    Download from [QGroundControl](https://docs.qgroundcontrol.com/master/en/qgc-user-guide/getting_started/download_and_install.html)
 
+5. **Install ROS package dependencies and build the package**:
+   ```bash
+   source /opt/ros/humble/setup.bash
+   rosdep install --from-paths . --ignore-src -r -y --rosdistro humble
+   colcon build --packages-select vns --symlink-install
+   source install/setup.bash
+   ```
+
+ROS libraries such as `rclpy`, `cv_bridge`, and `gazebo_ros` come from ROS 2
+packages via `apt`/`rosdep`, not from `pip3`.
+
 ### Running the Simulation
 
 
 1. **Start the full simulation stack**:
    ```bash
-   # Source ROS2
    source /opt/ros/humble/setup.bash
-   
+   source install/setup.bash
+
    # Launch simulation with GPS enabled
    ros2 launch vns full_simulation.launch.py
-   
+
    # Or launch with GPS disabled (GNSS-denied mode)
    ros2 launch vns full_simulation.launch.py gps_enabled:=false
    ```
@@ -196,10 +207,7 @@ vns/
 ## Tests
 
 ```bash
-# All tests
-make test
-
-# With coverage
+python3 -m pytest tests/ -q
 python3 -m pytest tests/ --cov=src/vns
 ```
 
