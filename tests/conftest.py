@@ -1,6 +1,7 @@
 """Shared fixtures for VNS vision pipeline tests."""
 
 from copy import deepcopy
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -107,19 +108,33 @@ def sample_entry(textured_image) -> DatabaseEntry:
     return _extract_entry(textured_image, "synth_001", 33.7470, 73.1370)
 
 
+def _database_images(textured_image: np.ndarray) -> list[tuple[str, np.ndarray, float, float]]:
+    return [
+        ("synth_001", textured_image, 33.7470, 73.1370),
+        ("synth_002", np.roll(textured_image, 60, axis=1), 33.7475, 73.1375),
+        ("synth_003", cv2.bitwise_not(textured_image), 33.7480, 73.1380),
+    ]
+
+
 def _build_sample_database(textured_image: np.ndarray) -> ReferenceDatabase:
     db = ReferenceDatabase(name="Test DB")
-    db.add_entry(
-        _extract_entry(textured_image, "synth_001", 33.7470, 73.1370)
-    )
-    shifted = np.roll(textured_image, 60, axis=1)
-    db.add_entry(
-        _extract_entry(shifted, "synth_002", 33.7475, 73.1375)
-    )
-    inverted = cv2.bitwise_not(textured_image)
-    db.add_entry(
-        _extract_entry(inverted, "synth_003", 33.7480, 73.1380)
-    )
+    for entry_id, image, lat, lon in _database_images(textured_image):
+        db.add_entry(_extract_entry(image, entry_id, lat, lon))
+    return db
+
+
+def _build_source_backed_database(
+    output_dir: Path,
+    textured_image: np.ndarray,
+) -> ReferenceDatabase:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    db = ReferenceDatabase(name="Test DB")
+    for entry_id, image, lat, lon in _database_images(textured_image):
+        image_path = output_dir / f"{entry_id}.png"
+        cv2.imwrite(str(image_path), image)
+        entry = _extract_entry(image, entry_id, lat, lon)
+        entry.source_path = str(image_path)
+        db.add_entry(entry)
     return db
 
 
@@ -162,6 +177,16 @@ def sample_database(textured_image) -> ReferenceDatabase:
 @pytest.fixture
 def sample_bovw_database(textured_image) -> ReferenceDatabase:
     return _attach_bovw_index(_build_sample_database(textured_image))
+
+
+@pytest.fixture
+def source_backed_database(tmp_path: Path, textured_image: np.ndarray) -> ReferenceDatabase:
+    return _build_source_backed_database(tmp_path / "reference_images", textured_image)
+
+
+@pytest.fixture
+def source_backed_bovw_database(source_backed_database: ReferenceDatabase) -> ReferenceDatabase:
+    return _attach_bovw_index(source_backed_database)
 
 
 @pytest.fixture

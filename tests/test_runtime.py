@@ -5,7 +5,12 @@ import pytest
 
 from vns.core.runtime import VnsRuntime
 from vns.validation import JsonlEvaluationLogger
+from vns.vision.types import LocalizationResult
 from vns.vision.bovw_retrieval import BoVWIndex
+from vns.utils.coordinates import enu_to_geodetic
+
+
+GRAVITY_M_S2 = 9.80665
 
 
 def test_runtime_reports_database_unavailable(sample_config, textured_image) -> None:
@@ -70,6 +75,154 @@ def test_runtime_successful_localization_updates_diagnostics(
     assert diagnostics.database_entry_count == sample_database.entry_count
     assert diagnostics.coverage_gap_detected is False
     assert diagnostics.last_localization_reason == "ok"
+
+
+def test_runtime_returns_dr_pose_when_localization_fails_under_gnss_denial(
+    monkeypatch,
+    sample_config,
+    sample_database,
+    textured_image,
+) -> None:
+    runtime = VnsRuntime(sample_config, database=sample_database)
+    runtime.update_gps(
+        latitude=33.7470,
+        longitude=73.1370,
+        altitude=580.0,
+        has_fix=True,
+        num_satellites=10,
+        hdop=1.0,
+        timestamp=100.0,
+    )
+    runtime.update_imu(
+        w=1.0,
+        x=0.0,
+        y=0.0,
+        z=0.0,
+        accel_x=0.0,
+        accel_y=0.0,
+        accel_z=-GRAVITY_M_S2,
+        gyro_x=0.0,
+        gyro_y=0.0,
+        gyro_z=0.0,
+        timestamp=100.5,
+    )
+    runtime.update_imu(
+        w=1.0,
+        x=0.0,
+        y=0.0,
+        z=0.0,
+        accel_x=1.0,
+        accel_y=0.0,
+        accel_z=-GRAVITY_M_S2,
+        gyro_x=0.0,
+        gyro_y=0.0,
+        gyro_z=0.0,
+        timestamp=101.5,
+    )
+    runtime.update_gps(
+        latitude=33.7470,
+        longitude=73.1370,
+        altitude=580.0,
+        has_fix=False,
+        num_satellites=0,
+        hdop=99.9,
+        timestamp=102.0,
+    )
+
+    def fail_localization(frame, altitude, heading_deg):
+        return LocalizationResult(
+            success=False,
+            confidence=0.2,
+            inlier_count=6,
+            matched_ref_id=None,
+            reason="low_confidence",
+            pose_ned=None,
+            pose_geodetic=None,
+            yaw_rad=0.0,
+            timestamp=103.0,
+        )
+
+    assert runtime.localizer is not None
+    monkeypatch.setattr(runtime.localizer, "localize", fail_localization)
+
+    result = runtime.process_frame(textured_image, timestamp=103.0)
+    expected_pose = enu_to_geodetic(
+        0.0,
+        0.5,
+        30.0,
+        33.7470,
+        73.1370,
+        550.0,
+    )
+
+    assert result.success is False
+    assert result.navigation_mode == "DR"
+    assert result.reason == "low_confidence"
+    assert result.blended_pose == pytest.approx(expected_pose)
+    assert runtime.dead_reckoning_ready is True
+
+
+def test_runtime_visual_fix_resets_dead_reckoning_under_gnss_denial(
+    monkeypatch,
+    sample_config,
+    sample_database,
+    textured_image,
+) -> None:
+    runtime = VnsRuntime(sample_config, database=sample_database)
+    runtime.update_gps(
+        latitude=33.7470,
+        longitude=73.1370,
+        altitude=580.0,
+        has_fix=True,
+        num_satellites=10,
+        hdop=1.0,
+        timestamp=100.0,
+    )
+    runtime.update_gps(
+        latitude=33.7470,
+        longitude=73.1370,
+        altitude=580.0,
+        has_fix=False,
+        num_satellites=0,
+        hdop=99.9,
+        timestamp=101.0,
+    )
+    visual_pose_ned = (12.0, -6.0, -30.0)
+    visual_pose_geo = enu_to_geodetic(
+        visual_pose_ned[1],
+        visual_pose_ned[0],
+        -visual_pose_ned[2],
+        33.7470,
+        73.1370,
+        550.0,
+    )
+
+    def succeed_localization(frame, altitude, heading_deg):
+        return LocalizationResult(
+            success=True,
+            confidence=0.92,
+            inlier_count=24,
+            matched_ref_id="grid_center",
+            reason="ok",
+            pose_ned=visual_pose_ned,
+            pose_geodetic=visual_pose_geo,
+            yaw_rad=0.1,
+            timestamp=102.0,
+        )
+
+    assert runtime.localizer is not None
+    monkeypatch.setattr(runtime.localizer, "localize", succeed_localization)
+
+    result = runtime.process_frame(textured_image, timestamp=102.0)
+    estimate = runtime.dead_reckoning.get_estimate()
+
+    assert result.success is True
+    assert result.navigation_mode == "VISION"
+    assert result.blended_pose == pytest.approx(visual_pose_geo)
+    assert runtime.dead_reckoning_ready is True
+    assert estimate.position.north == pytest.approx(visual_pose_ned[0])
+    assert estimate.position.east == pytest.approx(visual_pose_ned[1])
+    assert estimate.position.down == pytest.approx(visual_pose_ned[2])
 
 
 def test_runtime_uses_bovw_when_configured(

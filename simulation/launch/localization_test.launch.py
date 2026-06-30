@@ -35,7 +35,8 @@ from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from vns.utils.paths import (
-    prepend_search_path,
+    compose_gazebo_model_path,
+    compose_gazebo_resource_path,
     resolve_simulation_root,
     resolve_vns_python,
 )
@@ -84,13 +85,16 @@ def generate_launch_description():
 
     # ==================== Environment ====================
 
+    # compose_gazebo_* add the Gazebo share dir (/usr/share/gazebo-11) so the
+    # camera sensor's shaders and base models resolve without sourcing
+    # /usr/share/gazebo/setup.sh first.
     gazebo_model_path = SetEnvironmentVariable(
         'GAZEBO_MODEL_PATH',
-        prepend_search_path(models_dir, 'GAZEBO_MODEL_PATH')
+        compose_gazebo_model_path(models_dir)
     )
     gazebo_resource_path = SetEnvironmentVariable(
         'GAZEBO_RESOURCE_PATH',
-        prepend_search_path(worlds_dir, 'GAZEBO_RESOURCE_PATH')
+        compose_gazebo_resource_path(worlds_dir)
     )
     # Disable the online model database so gzserver does not block on startup.
     gazebo_model_db = SetEnvironmentVariable('GAZEBO_MODEL_DATABASE_URI', '')

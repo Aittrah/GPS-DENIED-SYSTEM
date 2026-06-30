@@ -25,7 +25,7 @@ from vns.database.reference_db import ReferenceDatabase
 from vns.interfaces.mavlink_interface import MAVLinkInterface
 from vns.utils.coordinates import enu_to_geodetic, geodetic_to_enu
 from vns.utils.logging import setup_logging
-from vns.validation import JsonlEvaluationLogger
+from vns.validation import ImageFrameLogger, JsonlEvaluationLogger
 
 
 class VnsNode(Node):
@@ -71,6 +71,11 @@ class VnsNode(Node):
         self._evaluation_logger = JsonlEvaluationLogger(
             enabled=self._evaluation_logging_enabled,
             log_dir=logging_cfg.log_dir,
+        )
+        self._image_logger = ImageFrameLogger(
+            enabled=bool(logging_cfg.log_images),
+            log_dir=logging_cfg.log_dir,
+            stride=logging_cfg.image_log_stride,
         )
 
         ros_cfg = self._config.model.ros
@@ -184,12 +189,14 @@ class VnsNode(Node):
 
     def _on_image(self, msg: Image):
         cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        self._image_logger.save(
+            cv_image, timestamp=self._stamp_to_seconds(msg.header.stamp)
+        )
         result = self._runtime.process_frame(cv_image)
         self._log_evaluation_sample(msg, result)
-        if not result.success:
+        if result.blended_pose is None:
             return
 
-        assert result.blended_pose is not None
         blended = result.blended_pose
 
         pose_msg = PoseStamped()
@@ -207,8 +214,13 @@ class VnsNode(Node):
         e, n, u = geodetic_to_enu(
             blended[0], blended[1], blended[2],
             origin_lat, origin_lon, origin_alt)
+        yaw_rad = (
+            result.localization.yaw_rad
+            if result.localization.success
+            else self._runtime.last_yaw_rad
+        )
         self._send_vision_estimate(
-            n=n, e=e, d=-u, yaw_rad=result.localization.yaw_rad)
+            n=n, e=e, d=-u, yaw_rad=yaw_rad)
 
     def _on_gps(self, msg: NavSatFix):
         has_fix = msg.status.status >= 0
@@ -227,11 +239,19 @@ class VnsNode(Node):
 
     def _on_imu(self, msg: Imu):
         q = msg.orientation
-        self._runtime.update_heading_from_quaternion(
+        stamp = self._stamp_to_seconds(msg.header.stamp)
+        self._runtime.update_imu(
             w=q.w,
             x=q.x,
             y=q.y,
             z=q.z,
+            accel_x=msg.linear_acceleration.x,
+            accel_y=msg.linear_acceleration.y,
+            accel_z=msg.linear_acceleration.z,
+            gyro_x=msg.angular_velocity.x,
+            gyro_y=msg.angular_velocity.y,
+            gyro_z=msg.angular_velocity.z,
+            timestamp=stamp,
         )
 
     def _on_ground_truth(self, msg: Odometry):
@@ -310,6 +330,8 @@ class VnsNode(Node):
     def destroy_node(self):
         if self._evaluation_logger is not None:
             self._evaluation_logger.close()
+        if self._image_logger is not None:
+            self._image_logger.close()
         if self._mavlink is not None and self._loop is not None and self._loop.is_running():
             future = asyncio.run_coroutine_threadsafe(
                 self._mavlink.disconnect(), self._loop

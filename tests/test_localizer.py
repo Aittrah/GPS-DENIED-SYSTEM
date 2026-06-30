@@ -1,9 +1,12 @@
 """Integration tests for the VisualLocalizer pipeline."""
 
+from copy import deepcopy
+
 import cv2
 import numpy as np
 import pytest
 
+from vns.preprocessing.patch_generator import PatchGenerator
 from vns.vision.bovw_retrieval import BoVWIndex
 from vns.vision.localizer import VisualLocalizer
 from vns.vision.types import LocalizationResult
@@ -86,6 +89,70 @@ class TestVisualLocalizer:
             assert isinstance(r.yaw_rad, float)
             assert isinstance(r.timestamp, float)
 
+    def test_patching_disabled_does_not_invoke_patch_generator(
+        self,
+        monkeypatch,
+        sample_config,
+        sample_database,
+        textured_image,
+    ):
+        def fail_generate_patches(*args, **kwargs):
+            raise AssertionError("PatchGenerator should not be used when patching is disabled")
+
+        monkeypatch.setattr(PatchGenerator, "generate_patches", fail_generate_patches)
+
+        loc = VisualLocalizer(sample_config, sample_database)
+        result = loc.localize(textured_image, altitude=580.0, heading_deg=0.0)
+
+        assert result.success
+
+    def test_localize_with_patching_enabled(
+        self,
+        monkeypatch,
+        sample_config,
+        source_backed_database,
+        textured_image,
+    ):
+        config = deepcopy(sample_config)
+        config["patching"] = {
+            "enabled": True,
+            "patch_size": 256,
+        }
+        calls = []
+        original_generate_patches = PatchGenerator.generate_patches
+
+        def spy_generate_patches(
+            self,
+            image,
+            image_center,
+            meters_per_pixel,
+            source,
+            base_id,
+        ):
+            calls.append((source, self.patch_size, base_id))
+            return original_generate_patches(
+                self,
+                image,
+                image_center,
+                meters_per_pixel,
+                source,
+                base_id,
+            )
+
+        monkeypatch.setattr(PatchGenerator, "generate_patches", spy_generate_patches)
+
+        loc = VisualLocalizer(config, source_backed_database)
+        result = loc.localize(textured_image, altitude=580.0, heading_deg=0.0)
+
+        assert result.success
+        assert result.reason == "ok"
+        assert result.matched_ref_id == "synth_001"
+        assert result.pose_geodetic is not None
+        assert result.pose_ned is not None
+        assert result.confidence > 0.0
+        assert {"uav", "satellite"}.issubset({source for source, _size, _base_id in calls})
+        assert {size for _source, size, _base_id in calls} == {256}
+
     def test_localize_with_bovw_mode(
         self,
         sample_bovw_config,
@@ -98,6 +165,29 @@ class TestVisualLocalizer:
         assert loc._retrieval.backend_name == "bovw"
         assert result.success
         assert result.matched_ref_id == "synth_001"
+
+    def test_localize_with_bovw_mode_and_patching_enabled(
+        self,
+        sample_bovw_config,
+        source_backed_bovw_database,
+        textured_image,
+    ):
+        config = deepcopy(sample_bovw_config)
+        config["patching"] = {
+            "enabled": True,
+            "patch_size": 256,
+        }
+
+        loc = VisualLocalizer(config, source_backed_bovw_database)
+        result = loc.localize(textured_image, altitude=580.0, heading_deg=0.0)
+
+        assert loc._retrieval.backend_name == "bovw"
+        assert result.success
+        assert result.confidence > 0.0
+        assert result.inlier_count > 0
+        assert result.matched_ref_id == "synth_001"
+        assert isinstance(result.success, bool)
+        assert isinstance(result.reason, str)
 
     def test_bovw_query_path_is_used(
         self,

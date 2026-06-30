@@ -34,6 +34,11 @@ preprocessing:
   clahe_grid_size: 8
   undistort: true
 
+# Optional FR-6 patch-based processing applied after preprocessing.
+patching:
+  enabled: false
+  patch_size: 256
+
 # Matching settings
 matching:
   confidence_threshold: 0.6
@@ -110,7 +115,8 @@ logging:
   max_size_mb: 100
   retention_count: 5
   log_to_console: true
-  log_images: true  # Save matched images for debugging
+  log_images: true  # Save downward-camera frames (PNG + manifest) under log_dir/images
+  image_log_stride: 1  # Save every Nth frame (raise to decimate at 30 Hz)
   log_features: true  # Log feature extraction details
 
 # Simulation-specific settings

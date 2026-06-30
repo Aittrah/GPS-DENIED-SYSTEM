@@ -47,6 +47,11 @@ class PreprocessingConfig(VnsBaseModel):
     undistort: bool = True
 
 
+class PatchingConfig(VnsBaseModel):
+    enabled: bool = False
+    patch_size: int = Field(default=256, gt=0)
+
+
 class FeatureExtractionConfig(VnsBaseModel):
     algorithm: Literal["ORB"] = "ORB"
     max_features: int = 500
@@ -150,6 +155,7 @@ class LoggingConfig(VnsBaseModel):
     retention_count: int = 5
     log_to_console: bool = True
     log_images: bool = False
+    image_log_stride: int = 1
     log_features: bool = False
 
 
@@ -170,6 +176,7 @@ class GeoReferenceConfig(VnsBaseModel):
 class VnsConfig(VnsBaseModel):
     camera: CameraConfig = Field(default_factory=CameraConfig)
     preprocessing: PreprocessingConfig = Field(default_factory=PreprocessingConfig)
+    patching: PatchingConfig = Field(default_factory=PatchingConfig)
     feature_extraction: FeatureExtractionConfig = Field(
         default_factory=FeatureExtractionConfig
     )
@@ -192,6 +199,13 @@ class VnsConfig(VnsBaseModel):
         if self.preprocessing.target_width <= 0 or self.preprocessing.target_height <= 0:
             raise ValueError(
                 "preprocessing.target_width and target_height must be positive."
+            )
+        if self.patching.patch_size > min(
+            self.preprocessing.target_width,
+            self.preprocessing.target_height,
+        ):
+            raise ValueError(
+                "patching.patch_size must not exceed the preprocessing target dimensions."
             )
         if camera.cx < 0 or camera.cy < 0:
             raise ValueError("camera.cx and camera.cy must be non-negative.")

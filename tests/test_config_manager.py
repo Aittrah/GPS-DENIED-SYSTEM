@@ -56,4 +56,40 @@ def test_model_returns_validated_defaults() -> None:
 
     assert model.database.path == "custom.vnsdb"
     assert model.preprocessing.undistort is True
+    assert model.patching.enabled is False
+    assert model.patching.patch_size == 256
     assert model.logging.format == "json"
+
+
+def test_model_parses_patching_overrides() -> None:
+    config = ConfigManager(
+        {
+            "patching": {
+                "enabled": True,
+                "patch_size": 128,
+            }
+        }
+    )
+
+    model = config.model
+
+    assert model.patching.enabled is True
+    assert model.patching.patch_size == 128
+
+
+def test_validation_rejects_patch_size_larger_than_preprocessed_frame() -> None:
+    with pytest.raises(
+        InvalidConfigError,
+        match="patching.patch_size must not exceed the preprocessing target dimensions",
+    ):
+        ConfigManager(
+            {
+                "preprocessing": {
+                    "target_width": 128,
+                    "target_height": 128,
+                },
+                "patching": {
+                    "patch_size": 256,
+                },
+            }
+        )

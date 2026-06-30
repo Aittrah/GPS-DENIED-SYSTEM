@@ -1,12 +1,15 @@
 """VisualLocalizer: orchestrates the six-stage localization pipeline."""
 
+import cv2
 import logging
 import time
+from types import SimpleNamespace
 from typing import Dict, List, Optional
 
 import numpy as np
 
-from vns.database.reference_db import ReferenceDatabase
+from vns.database.reference_db import DatabaseEntry, ReferenceDatabase
+from vns.preprocessing.patch_generator import PATCH_SIZE, PatchGenerator
 from vns.vision.extractor import FeatureExtractor
 from vns.vision.pose_recovery import PoseRecovery
 from vns.vision.preprocessor import Preprocessor
@@ -31,6 +34,7 @@ class VisualLocalizer:
 
     def __init__(self, config: dict, database: ReferenceDatabase) -> None:
         preproc_cfg = config.get("preprocessing", {})
+        patch_cfg = config.get("patching", {})
         feat_cfg = config.get("feature_extraction", {})
         match_cfg = config.get("matching", {})
         retrieval_cfg = config.get("retrieval", {})
@@ -68,12 +72,24 @@ class VisualLocalizer:
             ),
             undistort=preproc_cfg.get("undistort", True),
         )
+        self._reference_preprocessor = Preprocessor(
+            target_width=preproc_cfg.get("target_width", 640),
+            target_height=preproc_cfg.get("target_height", 480),
+            clahe_clip_limit=preproc_cfg.get("clahe_clip_limit", 2.0),
+            clahe_grid_size=preproc_cfg.get("clahe_grid_size", 8),
+            undistort=False,
+        )
         self._extractor = FeatureExtractor(
             algorithm=feat_cfg.get("algorithm", "ORB"),
             max_features=feat_cfg.get("max_features", 500),
             scale_factor=feat_cfg.get("scale_factor", 1.2),
             n_levels=feat_cfg.get("n_levels", 8),
         )
+        self._patching_enabled = bool(patch_cfg.get("enabled", False))
+        self._patch_size = int(patch_cfg.get("patch_size", PATCH_SIZE))
+        self._patch_generator = PatchGenerator(patch_size=self._patch_size)
+        self._patch_origin = SimpleNamespace(north=0.0, east=0.0, down=0.0)
+        self._patched_reference_entries: Dict[str, DatabaseEntry | None] = {}
         self._retrieval = RetrievalIndex.from_config(retrieval_cfg, database)
         self._verifier = GeometricVerifier(
             ratio_test_threshold=match_cfg.get("ratio_test_threshold", 0.75),
@@ -81,10 +97,11 @@ class VisualLocalizer:
         )
         self._pose_recovery = PoseRecovery()
         logger.info(
-            "VisualLocalizer ready: %d entries, top_k=%d, retrieval=%s",
+            "VisualLocalizer ready: %d entries, top_k=%d, retrieval=%s, patching=%s",
             len(database.entries),
             self._top_k,
             self._retrieval.backend_name,
+            self._patching_enabled,
         )
 
     # ------------------------------------------------------------------
@@ -118,7 +135,7 @@ class VisualLocalizer:
             return self._fail("preprocessing_error", ts)
 
         # 2 — Feature extraction
-        kp, des = self._extractor.detect_and_compute(processed)
+        kp, des = self._extract_query_features(processed)
         if len(kp) == 0:
             return self._fail("no_features", ts)
         logger.debug("Extracted %d features", len(kp))
@@ -137,7 +154,7 @@ class VisualLocalizer:
         # 4 — Geometric verification
         results: List[VerificationResult] = []
         for entry_id, _score in candidates:
-            entry = self._database.entries.get(entry_id)
+            entry = self._get_verification_entry(entry_id)
             if entry is None:
                 continue
             vr = self._verifier.verify(kp, des, entry)
@@ -204,6 +221,148 @@ class VisualLocalizer:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    def _extract_query_features(
+        self,
+        processed: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        if not self._patching_enabled:
+            return self._extractor.detect_and_compute(processed)
+        return self._extract_patch_features(
+            processed,
+            source="uav",
+            base_id="query",
+        )
+
+    def _extract_patch_features(
+        self,
+        image: np.ndarray,
+        *,
+        source: str,
+        base_id: str,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        patches = self._patch_generator.generate_patches(
+            image,
+            self._patch_origin,
+            1.0,
+            source,
+            base_id,
+        )
+        if not patches:
+            return self._empty_features()
+
+        keypoint_batches: list[np.ndarray] = []
+        descriptor_batches: list[np.ndarray] = []
+        for patch in patches:
+            kp, des = self._extractor.detect_and_compute(patch.data)
+            if len(kp) == 0 or des is None or len(des) == 0:
+                continue
+            offset = np.array([patch.offset_x, patch.offset_y], dtype=np.float32)
+            keypoint_batches.append(kp + offset)
+            descriptor_batches.append(np.asarray(des, dtype=np.uint8))
+
+        if not keypoint_batches or not descriptor_batches:
+            return self._empty_features()
+
+        return (
+            np.vstack(keypoint_batches).astype(np.float32),
+            np.vstack(descriptor_batches).astype(np.uint8),
+        )
+
+    def _get_verification_entry(self, entry_id: str) -> DatabaseEntry | None:
+        if not self._patching_enabled:
+            return self._database.entries.get(entry_id)
+
+        if entry_id not in self._patched_reference_entries:
+            base_entry = self._database.entries.get(entry_id)
+            if base_entry is None:
+                self._patched_reference_entries[entry_id] = None
+            else:
+                self._patched_reference_entries[entry_id] = (
+                    self._build_patched_reference_entry(base_entry)
+                )
+
+        return self._patched_reference_entries.get(entry_id)
+
+    def _build_patched_reference_entry(
+        self,
+        entry: DatabaseEntry,
+    ) -> DatabaseEntry | None:
+        if not entry.source_path:
+            logger.warning(
+                "Patching enabled but candidate %s has no source path.",
+                entry.id,
+            )
+            return None
+
+        try:
+            source_path = self._database.resolve_source_path(entry.source_path)
+        except Exception as exc:
+            logger.warning(
+                "Failed to resolve source path for %s: %s",
+                entry.id,
+                exc,
+            )
+            return None
+
+        image = cv2.imread(str(source_path), cv2.IMREAD_COLOR)
+        if image is None:
+            logger.warning(
+                "Failed to load source image for patched candidate %s from %s",
+                entry.id,
+                source_path,
+            )
+            return None
+
+        try:
+            processed = self._reference_preprocessor.process(image)
+        except Exception as exc:
+            logger.warning(
+                "Reference preprocessing failed for %s: %s",
+                entry.id,
+                exc,
+            )
+            return None
+
+        kp, des = self._extract_patch_features(
+            processed,
+            source="satellite",
+            base_id=entry.id,
+        )
+        if len(kp) == 0 or len(des) == 0:
+            logger.warning(
+                "Patched candidate %s produced no features.",
+                entry.id,
+            )
+            return None
+
+        metadata = dict(entry.metadata) if isinstance(entry.metadata, dict) else {}
+        metadata["width"] = int(processed.shape[1])
+        metadata["height"] = int(processed.shape[0])
+        metadata["patch_size"] = self._patch_size
+
+        return DatabaseEntry(
+            id=entry.id,
+            source_path=entry.source_path,
+            latitude=entry.latitude,
+            longitude=entry.longitude,
+            altitude=entry.altitude,
+            heading=entry.heading,
+            capture_time=entry.capture_time,
+            feature_count=len(kp),
+            feature_algorithm=entry.feature_algorithm,
+            keypoints=kp,
+            descriptors=des,
+            metadata=metadata,
+            bovw_histogram=entry.bovw_histogram,
+        )
+
+    @staticmethod
+    def _empty_features() -> tuple[np.ndarray, np.ndarray]:
+        return (
+            np.empty((0, 2), dtype=np.float32),
+            np.empty((0, 32), dtype=np.uint8),
+        )
 
     def _fail(
         self,
