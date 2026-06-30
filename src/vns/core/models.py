@@ -7,7 +7,7 @@ from .geo_utils import NEDPoint, GeoPoint
 
 @dataclass
 class IMUSample:
-    """Raw IMU reading from sensor"""
+    """Calibrated IMU reading in body axes."""
     accel_x: float      # m/s²
     accel_y: float      # m/s²
     accel_z: float      # m/s²

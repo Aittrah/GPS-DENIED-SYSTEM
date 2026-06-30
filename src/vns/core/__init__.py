@@ -7,9 +7,11 @@ from .diagnostics import SubsystemDiagnostic, VnsDiagnostics
 from .gnss_monitor import GnssMonitor, GnssState
 
 if TYPE_CHECKING:
+    from .dead_reckoning import DeadReckoning
     from .runtime import FrameProcessingResult, GroundTruthPose, VnsRuntime
 
 __all__ = [
+    "DeadReckoning",
     "FrameProcessingResult",
     "GroundTruthPose",
     "PositionBlender",
@@ -22,6 +24,10 @@ __all__ = [
 
 
 def __getattr__(name: str):
+    if name == "DeadReckoning":
+        from .dead_reckoning import DeadReckoning
+
+        return DeadReckoning
     if name in {"FrameProcessingResult", "GroundTruthPose", "VnsRuntime"}:
         from .runtime import FrameProcessingResult, GroundTruthPose, VnsRuntime
 
