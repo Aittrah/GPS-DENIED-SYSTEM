@@ -104,6 +104,22 @@ class TestPatchGenerator:
         patch = gen.generate_single_patch(make_image(512, 512), center(), 'uav', 'live')
         assert patch.data.shape == (PATCH_SIZE, PATCH_SIZE, 3)
 
+    def test_custom_patch_size_uses_half_patch_stride_by_default(self):
+        gen = PatchGenerator(patch_size=128)
+        patches = gen.generate_patches(make_image(512, 512), center(), 0.5, 'uav', 'custom')
+        expected = ((512 - 128) // 64 + 1) ** 2
+        assert len(patches) == expected
+        assert all(p.data.shape == (128, 128, 3) for p in patches)
+        assert gen.stride == 64
+
+    def test_patch_offsets_track_parent_image_coordinates(self):
+        gen = PatchGenerator()
+        patches = gen.generate_patches(make_image(512, 512), center(), 0.5, 'uav', 'coords')
+        assert patches[0].offset_x == 0
+        assert patches[0].offset_y == 0
+        assert patches[1].offset_x == STRIDE
+        assert patches[1].offset_y == 0
+
     def test_patch_data_is_copy(self):
         gen = PatchGenerator()
         img = make_image()

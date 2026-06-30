@@ -37,10 +37,12 @@ class UAVState:
 @dataclass
 class ImagePatch:
     """A fixed-size image patch with location metadata"""
-    data: np.ndarray              # (256, 256, 3) BGR
+    data: np.ndarray              # (patch_size, patch_size, C) image data
     center_position: NEDPoint
     patch_id: str
     source: Literal["uav", "satellite"]
+    offset_x: int = 0             # top-left x in the parent image
+    offset_y: int = 0             # top-left y in the parent image
 
 @dataclass
 class FeatureSet:

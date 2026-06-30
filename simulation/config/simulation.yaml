@@ -34,6 +34,11 @@ preprocessing:
   clahe_grid_size: 8
   undistort: true
 
+# Optional FR-6 patch-based processing applied after preprocessing.
+patching:
+  enabled: false
+  patch_size: 256
+
 # Matching settings
 matching:
   confidence_threshold: 0.6
