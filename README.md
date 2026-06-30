@@ -61,13 +61,13 @@ pip install -r requirements.txt
 ### 4. Run the Desktop App
 
 ```bash
-python -m src.vns.app.desktop_app
+python -m src.vns.desktop_app
 ```
 
 Or:
 
 ```bash
-python src/vns/app/desktop_app.py
+python src/vns/desktop_app.py
 ```
 
 The app opens a Tkinter window with:
@@ -84,9 +84,8 @@ The app opens a Tkinter window with:
 GPS-DENIED-SYSTEM/
 ├── src/
 │   └── vns/
-│       ├── app/                       # Desktop GUI application
-│       │   ├── desktop_app.py         # Main entry point — run this
-│       │   └── map_widget.py          # Interactive map widget
+│       ├── desktop_app.py             # Main entry point — run this
+│       ├── map_widget.py              # Interactive map widget
 │       ├── core/                      # Shared dataclasses and coordinate utils
 │       │   ├── models.py              # Inter-module data contracts
 │       │   └── geo_utils.py           # WGS84 <-> NED conversions
