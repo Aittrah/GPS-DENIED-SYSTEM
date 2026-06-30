@@ -194,10 +194,9 @@ class VnsNode(Node):
         )
         result = self._runtime.process_frame(cv_image)
         self._log_evaluation_sample(msg, result)
-        if not result.success:
+        if result.blended_pose is None:
             return
 
-        assert result.blended_pose is not None
         blended = result.blended_pose
 
         pose_msg = PoseStamped()
@@ -215,8 +214,13 @@ class VnsNode(Node):
         e, n, u = geodetic_to_enu(
             blended[0], blended[1], blended[2],
             origin_lat, origin_lon, origin_alt)
+        yaw_rad = (
+            result.localization.yaw_rad
+            if result.localization.success
+            else self._runtime.last_yaw_rad
+        )
         self._send_vision_estimate(
-            n=n, e=e, d=-u, yaw_rad=result.localization.yaw_rad)
+            n=n, e=e, d=-u, yaw_rad=yaw_rad)
 
     def _on_gps(self, msg: NavSatFix):
         has_fix = msg.status.status >= 0
@@ -235,11 +239,19 @@ class VnsNode(Node):
 
     def _on_imu(self, msg: Imu):
         q = msg.orientation
-        self._runtime.update_heading_from_quaternion(
+        stamp = self._stamp_to_seconds(msg.header.stamp)
+        self._runtime.update_imu(
             w=q.w,
             x=q.x,
             y=q.y,
             z=q.z,
+            accel_x=msg.linear_acceleration.x,
+            accel_y=msg.linear_acceleration.y,
+            accel_z=msg.linear_acceleration.z,
+            gyro_x=msg.angular_velocity.x,
+            gyro_y=msg.angular_velocity.y,
+            gyro_z=msg.angular_velocity.z,
+            timestamp=stamp,
         )
 
     def _on_ground_truth(self, msg: Odometry):

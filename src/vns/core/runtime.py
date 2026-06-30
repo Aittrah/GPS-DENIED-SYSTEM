@@ -10,10 +10,13 @@ import numpy as np
 
 from vns.config import ConfigManager, ConfigValue, VnsConfig
 from vns.core.blender import PositionBlender
+from vns.core.dead_reckoning import DeadReckoning
 from vns.core.diagnostics import SubsystemDiagnostic, VnsDiagnostics
-from vns.core.gnss_monitor import GnssMonitor
+from vns.core.gnss_monitor import GnssMonitor, GnssState
+from vns.core.models import IMUSample, NEDPoint
 from vns.database.reference_db import ReferenceDatabase
 from vns.interfaces.mavlink_interface import MAVLinkInterface
+from vns.utils.coordinates import geodetic_to_enu
 from vns.vision.localizer import VisualLocalizer
 from vns.vision.types import LocalizationResult
 
@@ -79,6 +82,8 @@ class VnsRuntime:
                 self._config_model.navigation.position_continuity_threshold
             ),
         )
+        self._dead_reckoning = DeadReckoning()
+        self._dead_reckoning_ready = False
 
         self._last_gps: tuple[float, float, float] | None = None
         self._last_altitude = self._config_model.geo_reference.origin_altitude
@@ -116,6 +121,14 @@ class VnsRuntime:
         return self._blender
 
     @property
+    def dead_reckoning(self) -> DeadReckoning:
+        return self._dead_reckoning
+
+    @property
+    def dead_reckoning_ready(self) -> bool:
+        return self._dead_reckoning_ready
+
+    @property
     def geo_origin(self) -> dict[str, float]:
         return deepcopy(self._config_dict["geo_reference"])  # type: ignore[return-value]
 
@@ -151,12 +164,20 @@ class VnsRuntime:
     ) -> None:
         self._last_gps = (latitude, longitude, altitude)
         self._last_altitude = altitude
-        self._gnss_monitor.update(
+        state = self._gnss_monitor.update(
             has_fix=has_fix,
             num_satellites=num_satellites,
             hdop=hdop,
             timestamp=timestamp,
         )
+        if state == GnssState.HEALTHY and has_fix:
+            self._anchor_dead_reckoning_to_geodetic(
+                latitude=latitude,
+                longitude=longitude,
+                altitude=altitude,
+                timestamp=timestamp,
+                confidence=1.0,
+            )
 
     def update_heading_from_quaternion(
         self,
@@ -171,6 +192,35 @@ class VnsRuntime:
         yaw_rad = math.atan2(siny_cosp, cosy_cosp)
         self._last_yaw_rad = yaw_rad
         self._last_heading_deg = math.degrees(yaw_rad)
+
+    def update_imu(
+        self,
+        *,
+        w: float,
+        x: float,
+        y: float,
+        z: float,
+        accel_x: float,
+        accel_y: float,
+        accel_z: float,
+        gyro_x: float,
+        gyro_y: float,
+        gyro_z: float,
+        timestamp: float | None = None,
+    ) -> None:
+        self.update_heading_from_quaternion(w=w, x=x, y=y, z=z)
+        sample_time = time.time() if timestamp is None else timestamp
+        self._dead_reckoning.update(
+            IMUSample(
+                accel_x=accel_x,
+                accel_y=accel_y,
+                accel_z=accel_z,
+                gyro_x=gyro_x,
+                gyro_y=gyro_y,
+                gyro_z=gyro_z,
+                timestamp=sample_time,
+            )
+        )
 
     def update_ground_truth_altitude(self, local_up_m: float) -> None:
         altitude = self._config_model.geo_reference.origin_altitude + local_up_m
@@ -225,16 +275,8 @@ class VnsRuntime:
             )
             self._last_localization = localization
             self._last_localization_reason = localization.reason
-            self._last_navigation_mode = "FAILSAFE"
-            self._last_blended_pose = None
             self._coverage_gap_detected = False
-            return FrameProcessingResult(
-                success=False,
-                navigation_mode=self._last_navigation_mode,
-                reason=localization.reason,
-                blended_pose=None,
-                localization=localization,
-            )
+            return self._finalize_frame_result(localization, ts)
 
         localization = self._localizer.localize(
             frame,
@@ -251,33 +293,11 @@ class VnsRuntime:
             self._last_localization_reason = reason
             localization = replace(localization, reason=reason)
             self._last_localization = localization
-            self._last_blended_pose = None
-            return FrameProcessingResult(
-                success=False,
-                navigation_mode=self._last_navigation_mode,
-                reason=reason,
-                blended_pose=None,
-                localization=localization,
-            )
+            return self._finalize_frame_result(localization, ts)
 
-        assert localization.pose_geodetic is not None
-        blended_pose, nav_mode = self._blender.blend(
-            self._last_gps,
-            localization.pose_geodetic,
-            self._gnss_monitor.state,
-            ts,
-        )
         self._coverage_gap_detected = False
-        self._last_navigation_mode = nav_mode
         self._last_localization_reason = localization.reason
-        self._last_blended_pose = blended_pose
-        return FrameProcessingResult(
-            success=True,
-            navigation_mode=nav_mode,
-            reason=localization.reason,
-            blended_pose=blended_pose,
-            localization=localization,
-        )
+        return self._finalize_frame_result(localization, ts)
 
     def get_diagnostics(self) -> VnsDiagnostics:
         db_loaded = self._database is not None
@@ -349,3 +369,65 @@ class VnsRuntime:
             self._config_model.database.query_radius_deg,
         )
         return len(nearby) == 0
+
+    def _finalize_frame_result(
+        self,
+        localization: LocalizationResult,
+        timestamp: float,
+    ) -> FrameProcessingResult:
+        blended_pose, nav_mode = self._blender.blend(
+            self._last_gps,
+            localization.pose_geodetic if localization.success else None,
+            self._gnss_monitor.state,
+            timestamp,
+            dead_reckoning=self._dead_reckoning,
+            dead_reckoning_estimate=self._dead_reckoning.get_estimate(),
+            dead_reckoning_ready=self._dead_reckoning_ready,
+            visual_pose_ned=localization.pose_ned if localization.success else None,
+            visual_confidence=localization.confidence if localization.success else None,
+            geo_origin=self.geo_origin,
+        )
+        if nav_mode == "VISION":
+            self._dead_reckoning_ready = True
+        self._last_navigation_mode = nav_mode
+        result_pose = None if nav_mode == "FAILSAFE" else blended_pose
+        self._last_blended_pose = result_pose
+        return FrameProcessingResult(
+            success=localization.success,
+            navigation_mode=nav_mode,
+            reason=localization.reason,
+            blended_pose=result_pose,
+            localization=localization,
+        )
+
+    def _anchor_dead_reckoning_to_geodetic(
+        self,
+        *,
+        latitude: float,
+        longitude: float,
+        altitude: float,
+        timestamp: float | None,
+        confidence: float,
+    ) -> None:
+        origin = self._config_model.geo_reference
+        east, north, up = geodetic_to_enu(
+            latitude,
+            longitude,
+            altitude,
+            origin.origin_latitude,
+            origin.origin_longitude,
+            origin.origin_altitude,
+        )
+        estimate = self._dead_reckoning.get_estimate()
+        anchored_state = replace(
+            estimate,
+            position=NEDPoint(
+                north=float(north),
+                east=float(east),
+                down=float(-up),
+            ),
+            confidence=max(estimate.confidence, confidence),
+            timestamp=time.time() if timestamp is None else timestamp,
+        )
+        self._dead_reckoning.reset(anchored_state)
+        self._dead_reckoning_ready = True
