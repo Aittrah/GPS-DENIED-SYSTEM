@@ -13,7 +13,6 @@ import time
 from pathlib import Path
 
 import rclpy
-from cv_bridge import CvBridge
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
@@ -25,6 +24,7 @@ from vns.database.reference_db import ReferenceDatabase
 from vns.interfaces.mavlink_interface import MAVLinkInterface
 from vns.utils.coordinates import enu_to_geodetic, geodetic_to_enu
 from vns.utils.logging import setup_logging
+from vns.utils.ros_env import check_cv_bridge_compatibility
 from vns.validation import ImageFrameLogger, JsonlEvaluationLogger
 
 
@@ -64,7 +64,11 @@ class VnsNode(Node):
             max_size_mb=logging_cfg.max_size_mb,
             retention_count=logging_cfg.retention_count,
         )
-        self._bridge = CvBridge()
+        bridge_check = check_cv_bridge_compatibility()
+        if not bridge_check.ok:
+            self.get_logger().error(bridge_check.message)
+            raise RuntimeError(bridge_check.message)
+        self._bridge = bridge_check.bridge
         configured_db_path = self._config.resolve_path(self._config.model.database.path)
         self._db = self._load_database(db_path or str(configured_db_path))
         self._runtime = VnsRuntime(self._config, database=self._db)
@@ -91,6 +95,10 @@ class VnsNode(Node):
         # MAVLink interface (async) — runs in a background thread
         if self._mavlink_enabled:
             mavlink_config['enabled'] = self._mavlink_enabled
+            self.get_logger().info(
+                "MAVLink enabled; connection string=%s",
+                mavlink_config.get('connection_string', ''),
+            )
             self._mavlink = MAVLinkInterface.from_config(mavlink_config)
             self._runtime.attach_mavlink(self._mavlink)
             self._loop = asyncio.new_event_loop()
@@ -133,7 +141,10 @@ class VnsNode(Node):
             return
         try:
             await self._mavlink.connect()
-            self.get_logger().info('MAVLink connected')
+            self.get_logger().info(
+                "MAVLink connected on %s",
+                self._mavlink.connection_string,
+            )
         except Exception as e:
             self.get_logger().error(f'MAVLink connection failed: {e}')
 
@@ -176,6 +187,7 @@ class VnsNode(Node):
             db = ReferenceDatabase.load(path)
             self.get_logger().info(
                 f'Loaded reference database: {db.entry_count} entries')
+            self._log_database_provenance(db)
             return db
         except Exception as e:
             self.get_logger().error(
@@ -344,6 +356,27 @@ class VnsNode(Node):
         if self._mavlink_thread is not None:
             self._mavlink_thread.join(timeout=2.0)
         super().destroy_node()
+
+    def _log_database_provenance(self, db: ReferenceDatabase) -> None:
+        source_counts: dict[str, int] = {}
+        for entry in db.entries.values():
+            source_type = str(entry.metadata.get('source_type', 'unknown'))
+            source_counts[source_type] = source_counts.get(source_type, 0) + 1
+
+        if not source_counts:
+            return
+
+        summary = ", ".join(
+            f"{source_type}={count}" for source_type, count in sorted(source_counts.items())
+        )
+        self.get_logger().info("Reference DB source types: %s", summary)
+
+        if source_counts.get('synthetic'):
+            self.get_logger().warn(
+                "Loaded a synthetic reference database. For meaningful Gazebo "
+                "E2E validation, capture real frames from "
+                "/vns_drone/downward_camera/image_raw and rebuild qau_campus.vnsdb."
+            )
 
 
 def main(args=None):

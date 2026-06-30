@@ -67,20 +67,20 @@ class MAVLinkInterface:
 
     Usage::
 
-        iface = MAVLinkInterface("udp://:14551")
+        iface = MAVLinkInterface("udp://:14540")
         await iface.connect()
         await iface.subscribe_gps(lambda s: print(s))
         ...
         await iface.disconnect()
 
     Connection strings:
-        UDP:    ``udp://:14551``  or  ``udp://192.168.1.1:14550``
+        UDP:    ``udp://:14540``  or  ``udp://192.168.1.1:14540``
         Serial: ``serial:///dev/ttyUSB0:57600``
     """
 
     def __init__(
         self,
-        connection_string: str = "udp://:14551",
+        connection_string: str = "udp://:14540",
         system_id: int = 1,
         component_id: int = 196,
         max_reconnect_attempts: int = 5,
@@ -107,6 +107,7 @@ class MAVLinkInterface:
         self._status = VehicleStatus()
         self._gps_task: Optional[asyncio.Task] = None
         self._status_task: Optional[asyncio.Task] = None
+        self._vision_send_logged = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -211,6 +212,12 @@ class MAVLinkInterface:
             self._status.last_error = None
             self._status.timestamp = time.time()
             self._notify_status_callbacks()
+            if not self._vision_send_logged:
+                logger.info(
+                    "VISION_POSITION_ESTIMATE send path active on %s",
+                    self._connection_string,
+                )
+                self._vision_send_logged = True
             return True
         except Exception as exc:
             self._status.last_error = str(exc)
@@ -229,11 +236,15 @@ class MAVLinkInterface:
         snapshot.gps_status = copy.copy(self._gps_status)
         return snapshot
 
+    @property
+    def connection_string(self) -> str:
+        return self._connection_string
+
     @classmethod
     def from_config(cls, config: dict) -> "MAVLinkInterface":
         """Construct from the ``mavlink`` section of simulation.yaml."""
         return cls(
-            connection_string=config.get("connection_string", "udp://:14551"),
+            connection_string=config.get("connection_string", "udp://:14540"),
             system_id=config.get("system_id", 1),
             component_id=config.get("component_id", 196),
             max_reconnect_attempts=config.get("max_reconnect_attempts", 5),
@@ -268,7 +279,10 @@ class MAVLinkInterface:
             self._status.last_error = None
             self._status.timestamp = time.time()
             self._notify_status_callbacks()
-            logger.info("Connected to flight controller")
+            logger.info(
+                "Connected to flight controller on %s",
+                self._connection_string,
+            )
             return True
         except asyncio.TimeoutError:
             self._connected = False

@@ -138,16 +138,33 @@ Requires **ROS2 Humble** and **Gazebo Classic 11**.
 
 ```bash
 source /opt/ros/humble/setup.bash
+pip3 install "numpy<2"
+# If pytest/import checks complain about a missing parser dependency:
+# pip3 install lark
 rosdep install --from-paths . --ignore-src -r -y --rosdistro humble
 colcon build --packages-select vns --symlink-install
 source install/setup.bash
 
+# Preflight the ROS Python environment before starting the camera path
+python3 simulation/scripts/check_ros2_python_env.py
+
+# Deterministic visual-localization smoke test (no PX4)
+ros2 launch vns localization_test.launch.py headless:=true
+
 # Launch with GPS enabled
-ros2 launch vns full_simulation.launch.py
+ros2 launch vns full_simulation.launch.py headless:=true
 
 # Launch in GNSS-denied mode
-ros2 launch vns full_simulation.launch.py gps_enabled:=false
+ros2 launch vns full_simulation.launch.py headless:=true gps_enabled:=false
 ```
+
+The simulation config now targets PX4 SITL's onboard-computer MAVSDK port
+`udp://:14540`. Port `14550` remains reserved for QGroundControl / GCS traffic.
+
+For the real Gazebo reference-image capture and database rebuild workflow, see
+`docs/database_creation.md`. The committed `simulation/database/images/` and
+`simulation/database/qau_campus.vnsdb` artifacts remain the explicit synthetic
+baseline until you run the Gazebo capture flow locally.
 
 ---
 

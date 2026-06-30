@@ -132,7 +132,7 @@ class DatabaseConfig(VnsBaseModel):
 
 
 class MavlinkConfig(VnsBaseModel):
-    connection_string: str = "udp://:14551"
+    connection_string: str = "udp://:14540"
     system_id: int = 1
     component_id: int = 196
     max_reconnect_attempts: int = 5

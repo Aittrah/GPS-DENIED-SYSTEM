@@ -75,12 +75,42 @@ def _build_capture_command(
     script_path: Path,
 ) -> list[str]:
     command = [sys.executable, str(script_path)]
-    if args.synthetic:
-        command.append("--synthetic")
     if args.config:
         command.extend(["--config", str(args.config)])
     if args.output:
         command.extend(["--output", str(args.output)])
+    if getattr(args, "simulation_config", None):
+        command.extend(["--simulation-config", str(args.simulation_config)])
+    if getattr(args, "camera_topic", None):
+        command.extend(["--camera-topic", str(args.camera_topic)])
+    if getattr(args, "ground_truth_topic", None):
+        command.extend(["--ground-truth-topic", str(args.ground_truth_topic)])
+    if getattr(args, "position_tolerance_m", None) is not None:
+        command.extend(["--position-tolerance-m", str(args.position_tolerance_m)])
+    if getattr(args, "heading_tolerance_deg", None) is not None:
+        command.extend(["--heading-tolerance-deg", str(args.heading_tolerance_deg)])
+    if getattr(args, "auto_capture", False):
+        command.append("--auto-capture")
+    if getattr(args, "overwrite", False):
+        command.append("--overwrite")
+    return command
+
+
+def _build_generate_synthetic_command(
+    args: argparse.Namespace,
+    script_path: Path,
+) -> list[str]:
+    command = [sys.executable, str(script_path)]
+    if args.config:
+        command.extend(["--config", str(args.config)])
+    if args.output:
+        command.extend(["--output", str(args.output)])
+    if getattr(args, "width", None) is not None:
+        command.extend(["--width", str(args.width)])
+    if getattr(args, "height", None) is not None:
+        command.extend(["--height", str(args.height)])
+    if getattr(args, "overwrite", False):
+        command.append("--overwrite")
     return command
 
 
@@ -233,18 +263,50 @@ def db_migrate(args: argparse.Namespace) -> int:
 def db_capture(args: argparse.Namespace) -> int:
     """Trigger image collection from simulation / camera stream."""
     try:
-        script_path = _require_existing_file(
-            _script_path("capture_reference_images.py"),
-            description="Image capture script",
-        )
-        command = _build_capture_command(args, script_path)
+        if args.synthetic:
+            script_path = _require_existing_file(
+                _script_path("generate_synthetic_reference_images.py"),
+                description="Synthetic image generator script",
+            )
+            command = _build_generate_synthetic_command(args, script_path)
+        else:
+            script_path = _require_existing_file(
+                _script_path("capture_reference_images.py"),
+                description="Image capture script",
+            )
+            command = _build_capture_command(args, script_path)
     except (FileNotFoundError, IsADirectoryError, ValueError) as exc:
         return _print_error(str(exc))
 
+    if args.synthetic:
+        print(
+            "Deprecated: `vns database capture --synthetic` now forwards to the "
+            "explicit synthetic generator. Prefer `vns database generate-synthetic`."
+        )
     print("Starting reference image collection...")
     print(f"Running image capture: {' '.join(command)}")
     try:
         _run_command(command, description="image capture")
+    except RuntimeError as exc:
+        return _print_error(str(exc))
+    return 0
+
+
+def db_generate_synthetic(args: argparse.Namespace) -> int:
+    """Generate the synthetic reference-image baseline for offline tests."""
+    try:
+        script_path = _require_existing_file(
+            _script_path("generate_synthetic_reference_images.py"),
+            description="Synthetic image generator script",
+        )
+        command = _build_generate_synthetic_command(args, script_path)
+    except (FileNotFoundError, IsADirectoryError, ValueError) as exc:
+        return _print_error(str(exc))
+
+    print("Generating synthetic reference images...")
+    print(f"Running synthetic generator: {' '.join(command)}")
+    try:
+        _run_command(command, description="synthetic image generation")
     except RuntimeError as exc:
         return _print_error(str(exc))
     return 0
@@ -359,7 +421,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser_db_capture.add_argument(
         "--synthetic",
         action="store_true",
-        help="Capture synthetic images for offline testing",
+        help="Deprecated compatibility flag; use `database generate-synthetic` instead",
     )
     parser_db_capture.add_argument(
         "--config",
@@ -367,9 +429,74 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to reference metadata YAML",
     )
     parser_db_capture.add_argument(
+        "--simulation-config",
+        type=str,
+        help="Path to simulation.yaml for geo_reference origin lookup",
+    )
+    parser_db_capture.add_argument(
         "--output",
         type=str,
         help="Output directory for captured images",
+    )
+    parser_db_capture.add_argument(
+        "--camera-topic",
+        type=str,
+        help="ROS image topic to capture",
+    )
+    parser_db_capture.add_argument(
+        "--ground-truth-topic",
+        type=str,
+        help="Ground-truth odometry topic",
+    )
+    parser_db_capture.add_argument(
+        "--position-tolerance-m",
+        type=float,
+        help="Maximum horizontal distance from the target reference point",
+    )
+    parser_db_capture.add_argument(
+        "--heading-tolerance-deg",
+        type=float,
+        help="Maximum heading error from the target reference point",
+    )
+    parser_db_capture.add_argument(
+        "--auto-capture",
+        action="store_true",
+        help="Capture automatically once the target is within tolerance",
+    )
+    parser_db_capture.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow overwriting existing outputs",
+    )
+
+    parser_db_generate_synthetic = db_subparsers.add_parser(
+        "generate-synthetic",
+        help="Generate synthetic reference images for offline tests",
+    )
+    parser_db_generate_synthetic.add_argument(
+        "--config",
+        type=str,
+        help="Path to reference metadata YAML",
+    )
+    parser_db_generate_synthetic.add_argument(
+        "--output",
+        type=str,
+        help="Output directory for generated images",
+    )
+    parser_db_generate_synthetic.add_argument(
+        "--width",
+        type=int,
+        help="Synthetic image width",
+    )
+    parser_db_generate_synthetic.add_argument(
+        "--height",
+        type=int,
+        help="Synthetic image height",
+    )
+    parser_db_generate_synthetic.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow overwriting existing outputs",
     )
 
     parser.add_argument(
@@ -396,6 +523,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return db_migrate(args)
         if args.db_command == "capture":
             return db_capture(args)
+        if args.db_command == "generate-synthetic":
+            return db_generate_synthetic(args)
 
     parser.print_help()
     return 0

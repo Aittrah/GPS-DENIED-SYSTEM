@@ -6,7 +6,8 @@ The deterministic, no-PX4 way to see the visual localizer publish a pose fix:
 1. gzserver on `uav_localization_test.sdf` — a map-only world (clean textured
    ground, no buildings) with a STATIC downward camera parked at 240 m over the
    origin, so the camera always sees the pristine grid_center reference tile.
-2. vns_node (run under .venv-run so cv_bridge does not segfault on numpy 2).
+2. vns_node (after `python3 simulation/scripts/check_ros2_python_env.py`
+   reports a compatible NumPy / cv_bridge environment).
 
 No PX4, no drone spawn, no flight: the camera is static in the world. The node
 localizes every frame and publishes geometry_msgs/PoseStamped on

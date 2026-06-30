@@ -93,8 +93,8 @@ def synthetic_db(tmp_path_factory):
     images_dir = tmp / "images"
 
     subprocess.run(
-        [sys.executable, str(SCRIPTS / "capture_reference_images.py"),
-         "--synthetic", "--output", str(images_dir)],
+        [sys.executable, str(SCRIPTS / "generate_synthetic_reference_images.py"),
+         "--output", str(images_dir)],
         check=True, cwd=str(SCRIPTS),
     )
 

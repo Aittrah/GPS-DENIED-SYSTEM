@@ -1,318 +1,348 @@
 #!/usr/bin/env python3
-"""
-Reference Image Capture Script for VNS Simulation
+"""Capture real Gazebo downward-camera reference images under ROS 2 Humble."""
 
-This script captures geotagged reference images from the Gazebo simulation
-environment for building the visual navigation reference database.
-
-Usage:
-    python capture_reference_images.py --config qau_reference_metadata.yaml --output ./images
-
-Requirements:
-    - ROS2 Humble
-    - Gazebo simulation running with VNS drone
-    - Camera topic publishing
-"""
+from __future__ import annotations
 
 import argparse
-import os
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import math
+from pathlib import Path
 import sys
 import time
-from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
-from typing import List, Optional
 
+import cv2
 import yaml
 
-try:
-    import cv2
-    import numpy as np
-except ImportError:
-    print("Error: OpenCV not installed. Run: pip install opencv-python")
-    sys.exit(1)
+from reference_image_utils import (
+    CapturedImage,
+    ReferencePoint,
+    generate_database_index,
+    load_reference_config,
+    validate_coverage,
+)
+
+_REPO_SRC = Path(__file__).resolve().parents[2] / "src"
+if _REPO_SRC.exists() and str(_REPO_SRC) not in sys.path:
+    sys.path.insert(0, str(_REPO_SRC))
+
+from vns.utils.coordinates import enu_to_geodetic
+from vns.utils.ros_env import check_cv_bridge_compatibility
 
 
-@dataclass
-class ReferencePoint:
-    """A reference point for image capture."""
-    id: str
+@dataclass(frozen=True)
+class GroundTruthPose:
     latitude: float
     longitude: float
     altitude: float
-    heading: float
-    description: str
+    heading_deg: float
+    timestamp: float | None
 
 
-@dataclass
-class CapturedImage:
-    """Metadata for a captured reference image."""
-    id: str
-    filepath: str
-    latitude: float
-    longitude: float
-    altitude: float
-    heading: float
-    timestamp: str
-    width: int
-    height: int
-
-
-def load_reference_points(config_path: str) -> List[ReferencePoint]:
-    """Load reference points from YAML configuration."""
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    points = []
-    for point_data in config.get('reference_points', []):
-        points.append(ReferencePoint(
-            id=point_data['id'],
-            latitude=point_data['latitude'],
-            longitude=point_data['longitude'],
-            altitude=point_data['altitude'],
-            heading=point_data['heading'],
-            description=point_data.get('description', '')
-        ))
-    
-    return points
-
-
-def create_synthetic_image(point: ReferencePoint, width: int = 640, height: int = 480) -> np.ndarray:
-    """
-    Create a synthetic reference image for testing.
-    
-    In actual use, this would capture from Gazebo camera topic.
-    For offline testing, generates a distinctive pattern based on location.
-    """
-    # Create base image with location-based color
-    lat_norm = (point.latitude - 33.74) / 0.02
-    lon_norm = (point.longitude - 73.13) / 0.02
-    
-    # Generate distinctive colors based on position
-    r = int(128 + 127 * lat_norm) % 256
-    g = int(128 + 127 * lon_norm) % 256
-    b = int(128 + 127 * (lat_norm + lon_norm) / 2) % 256
-    
-    image = np.zeros((height, width, 3), dtype=np.uint8)
-    image[:, :] = [b, g, r]
-    
-    # Add grid pattern for feature detection
-    grid_spacing = 40
-    for i in range(0, width, grid_spacing):
-        cv2.line(image, (i, 0), (i, height), (255, 255, 255), 1)
-    for j in range(0, height, grid_spacing):
-        cv2.line(image, (0, j), (width, j), (255, 255, 255), 1)
-    
-    # Add distinctive markers based on heading
-    center_x, center_y = width // 2, height // 2
-    heading_rad = np.radians(point.heading)
-    arrow_len = 50
-    end_x = int(center_x + arrow_len * np.sin(heading_rad))
-    end_y = int(center_y - arrow_len * np.cos(heading_rad))
-    cv2.arrowedLine(image, (center_x, center_y), (end_x, end_y), (0, 0, 255), 3)
-    
-    # Add location text
-    text = f"{point.id}"
-    cv2.putText(image, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-    
-    coords = f"({point.latitude:.4f}, {point.longitude:.4f})"
-    cv2.putText(image, coords, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-    
-    # Add some random features for ORB detection
-    np.random.seed(hash(point.id) % (2**32))
-    for _ in range(20):
-        x = np.random.randint(50, width - 50)
-        y = np.random.randint(80, height - 50)
-        size = np.random.randint(5, 20)
-        color = tuple(np.random.randint(0, 256, 3).tolist())
-        cv2.circle(image, (x, y), size, color, -1)
-    
-    return image
-
-
-def save_image_with_metadata(
-    image: np.ndarray,
-    point: ReferencePoint,
-    output_dir: Path
-) -> CapturedImage:
-    """Save image and return metadata."""
-    timestamp = datetime.utcnow().isoformat()
-    filename = f"{point.id}.jpg"
-    filepath = output_dir / filename
-    
-    cv2.imwrite(str(filepath), image)
-    
-    return CapturedImage(
-        id=point.id,
-        filepath=str(filepath),
-        latitude=point.latitude,
-        longitude=point.longitude,
-        altitude=point.altitude,
-        heading=point.heading,
-        timestamp=timestamp,
-        width=image.shape[1],
-        height=image.shape[0]
+def _load_geo_origin(config_path: Path) -> tuple[float, float, float]:
+    with open(config_path, "r", encoding="utf-8") as handle:
+        config = yaml.safe_load(handle) or {}
+    geo = config.get("geo_reference", {})
+    return (
+        float(geo.get("origin_latitude", 33.7470)),
+        float(geo.get("origin_longitude", 73.1370)),
+        float(geo.get("origin_altitude", 550.0)),
     )
 
 
-def generate_database_index(
-    captured_images: List[CapturedImage],
-    output_dir: Path,
-    config_path: str
-) -> None:
-    """Generate database index file from captured images."""
-    output_dir = output_dir.resolve()
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    index = {
-        'database': {
-            'name': config['database']['name'],
-            'version': config['database']['version'],
-            'created': datetime.utcnow().isoformat(),
-            'location': config['database']['location'],
-            'center': config['database']['center'],
-            'bounds': config['database']['bounds'],
-            'image_count': len(captured_images)
-        },
-        'images': []
-    }
-    
-    for img in captured_images:
-        image_path = Path(img.filepath).resolve()
-        relative_path = image_path.relative_to(output_dir).as_posix()
-        index['images'].append({
-            'id': img.id,
-            'filepath': relative_path,
-            'latitude': img.latitude,
-            'longitude': img.longitude,
-            'altitude': img.altitude,
-            'heading': img.heading,
-            'timestamp': img.timestamp,
-            'width': img.width,
-            'height': img.height
-        })
-    
-    index_path = output_dir / 'database_index.yaml'
-    with open(index_path, 'w') as f:
-        yaml.dump(index, f, default_flow_style=False)
-    
-    print(f"Database index saved to: {index_path}")
+def _horizontal_error_m(target: ReferencePoint, pose: GroundTruthPose) -> float:
+    m_per_deg_lat = 111320.0
+    m_per_deg_lon = 111320.0 * math.cos(math.radians(target.latitude))
+    north_m = (pose.latitude - target.latitude) * m_per_deg_lat
+    east_m = (pose.longitude - target.longitude) * m_per_deg_lon
+    return float(math.hypot(north_m, east_m))
 
 
-def validate_coverage(
-    captured_images: List[CapturedImage],
-    config_path: str
-) -> dict:
-    """Validate that captured images provide adequate coverage."""
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    bounds = config['database']['bounds']
-    
-    # Calculate coverage statistics
-    lats = [img.latitude for img in captured_images]
-    lons = [img.longitude for img in captured_images]
-    
-    coverage = {
-        'total_images': len(captured_images),
-        'latitude_range': [min(lats), max(lats)],
-        'longitude_range': [min(lons), max(lons)],
-        'bounds_coverage': {
-            'north': max(lats) >= bounds['max_latitude'] - 0.001,
-            'south': min(lats) <= bounds['min_latitude'] + 0.001,
-            'east': max(lons) >= bounds['max_longitude'] - 0.001,
-            'west': min(lons) <= bounds['min_longitude'] + 0.001
-        },
-        'headings_covered': len(set(img.heading for img in captured_images))
-    }
-    
-    # Check for gaps (simplified)
-    coverage['adequate'] = (
-        coverage['total_images'] >= 10 and
-        all(coverage['bounds_coverage'].values())
-    )
-    
-    return coverage
+def _heading_error_deg(target_heading: float, actual_heading: float) -> float:
+    delta = (actual_heading - target_heading + 180.0) % 360.0 - 180.0
+    return abs(delta)
 
 
-def main():
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _resolve_cli_path(path_value: str, *, script_dir: Path) -> Path:
+    candidate = Path(path_value)
+    if candidate.is_absolute():
+        return candidate.resolve()
+    if candidate.exists():
+        return candidate.resolve()
+    return (script_dir / candidate).resolve()
+
+
+def _import_ros_types() -> tuple[object, object, object, object]:
+    try:
+        import rclpy
+        from nav_msgs.msg import Odometry
+        from rclpy.node import Node
+        from sensor_msgs.msg import Image
+    except ImportError as exc:
+        print(
+            "ROS 2 Python packages are not available in this environment. "
+            "Source /opt/ros/humble/setup.bash and use the ROS 2 Python "
+            "interpreter before running this capture script.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
+    return rclpy, Node, Image, Odometry
+
+
+def main() -> int:
     parser = argparse.ArgumentParser(
-        description='Capture reference images for VNS database'
+        description="Capture real Gazebo downward-camera reference images."
     )
     parser.add_argument(
-        '--config',
+        "--config",
         type=str,
-        default='../database/qau_reference_metadata.yaml',
-        help='Path to reference metadata YAML file'
+        default="../database/qau_reference_metadata.yaml",
+        help="Path to reference metadata YAML file",
     )
     parser.add_argument(
-        '--output',
+        "--simulation-config",
         type=str,
-        default='../database/images',
-        help='Output directory for captured images'
+        default="../config/simulation.yaml",
+        help="Path to simulation.yaml for geo_reference origin lookup",
     )
     parser.add_argument(
-        '--synthetic',
-        action='store_true',
-        help='Generate synthetic images (for testing without Gazebo)'
+        "--output",
+        type=str,
+        default="../database/images/gazebo",
+        help="Output directory for captured images",
     )
     parser.add_argument(
-        '--width',
-        type=int,
-        default=640,
-        help='Image width'
+        "--camera-topic",
+        type=str,
+        default="/vns_drone/downward_camera/image_raw",
+        help="ROS image topic to capture",
     )
     parser.add_argument(
-        '--height',
-        type=int,
-        default=480,
-        help='Image height'
+        "--ground-truth-topic",
+        type=str,
+        default="/vns_drone/ground_truth",
+        help="Ground-truth odometry topic",
     )
-    
+    parser.add_argument(
+        "--position-tolerance-m",
+        type=float,
+        default=3.0,
+        help="Maximum horizontal distance from the target reference point",
+    )
+    parser.add_argument(
+        "--heading-tolerance-deg",
+        type=float,
+        default=20.0,
+        help="Maximum absolute heading error for a valid capture",
+    )
+    parser.add_argument(
+        "--auto-capture",
+        action="store_true",
+        help="Capture automatically once the current target is within tolerance",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Allow overwriting existing captured images in the output directory",
+    )
     args = parser.parse_args()
-    
-    # Resolve paths
+
+    bridge_check = check_cv_bridge_compatibility()
+    print(bridge_check.message)
+    if not bridge_check.ok:
+        return 1
+
     script_dir = Path(__file__).resolve().parent
-    config_path = (script_dir / args.config).resolve()
-    output_dir = (script_dir / args.output).resolve()
-    
-    # Create output directory
+    config_path = _resolve_cli_path(args.config, script_dir=script_dir)
+    simulation_config_path = _resolve_cli_path(
+        args.simulation_config,
+        script_dir=script_dir,
+    )
+    output_dir = _resolve_cli_path(args.output, script_dir=script_dir)
+    config, reference_points = load_reference_config(config_path)
+    origin_lat, origin_lon, origin_alt = _load_geo_origin(simulation_config_path)
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    
-    print(f"Loading reference points from: {config_path}")
-    reference_points = load_reference_points(str(config_path))
-    print(f"Found {len(reference_points)} reference points")
-    
-    captured_images = []
-    
-    if args.synthetic:
-        print("Generating synthetic reference images...")
-        for i, point in enumerate(reference_points):
-            print(f"  [{i+1}/{len(reference_points)}] {point.id}: {point.description}")
-            image = create_synthetic_image(point, args.width, args.height)
-            captured = save_image_with_metadata(image, point, output_dir)
-            captured_images.append(captured)
-    else:
-        print("ROS2 camera capture not implemented in this version.")
-        print("Use --synthetic flag to generate test images.")
-        sys.exit(1)
-    
-    # Generate database index
-    generate_database_index(captured_images, output_dir, str(config_path))
-    
-    # Validate coverage
-    print("\nValidating coverage...")
-    coverage = validate_coverage(captured_images, str(config_path))
-    print(f"  Total images: {coverage['total_images']}")
-    print(f"  Latitude range: {coverage['latitude_range']}")
-    print(f"  Longitude range: {coverage['longitude_range']}")
-    print(f"  Bounds coverage: {coverage['bounds_coverage']}")
-    print(f"  Headings covered: {coverage['headings_covered']}")
-    print(f"  Adequate coverage: {coverage['adequate']}")
-    
-    print(f"\nReference images saved to: {output_dir}")
+    if not args.overwrite:
+        collisions = [
+            output_dir / f"{point.id}.jpg"
+            for point in reference_points
+            if (output_dir / f"{point.id}.jpg").exists()
+        ]
+        if collisions:
+            print(
+                "Refusing to overwrite existing Gazebo captures. Use --overwrite "
+                "or a fresh --output directory.",
+                file=sys.stderr,
+            )
+            return 1
 
+    rclpy, Node, Image, Odometry = _import_ros_types()
 
-if __name__ == '__main__':
-    main()
+    class GazeboReferenceCapture(Node):
+        def __init__(self) -> None:
+            super().__init__("gazebo_reference_capture")
+            self._bridge = bridge_check.bridge
+            self._latest_image = None
+            self._latest_ground_truth: GroundTruthPose | None = None
+            self.create_subscription(Image, args.camera_topic, self._on_image, 10)
+            self.create_subscription(
+                Odometry,
+                args.ground_truth_topic,
+                self._on_ground_truth,
+                10,
+            )
+
+        def ready(self) -> bool:
+            return self._latest_image is not None and self._latest_ground_truth is not None
+
+        def current_status(self, target: ReferencePoint) -> tuple[float, float] | None:
+            if self._latest_ground_truth is None:
+                return None
+            return (
+                _horizontal_error_m(target, self._latest_ground_truth),
+                _heading_error_deg(target.heading, self._latest_ground_truth.heading_deg),
+            )
+
+        def capture(self, target: ReferencePoint) -> CapturedImage:
+            if self._latest_image is None or self._latest_ground_truth is None:
+                raise RuntimeError("Latest camera frame or ground truth is not ready.")
+
+            filepath = output_dir / f"{target.id}.jpg"
+            frame = self._latest_image.copy()
+            if not cv2.imwrite(str(filepath), frame):
+                raise RuntimeError(f"Failed to write {filepath}")
+
+            ground_truth = self._latest_ground_truth
+            horizontal_error = _horizontal_error_m(target, ground_truth)
+            heading_error = _heading_error_deg(target.heading, ground_truth.heading_deg)
+            return CapturedImage(
+                id=target.id,
+                filepath=str(filepath),
+                latitude=target.latitude,
+                longitude=target.longitude,
+                altitude=target.altitude,
+                heading=target.heading,
+                timestamp=_utc_now_iso(),
+                width=frame.shape[1],
+                height=frame.shape[0],
+                extra={
+                    "source_type": "gazebo_camera",
+                    "source_topic": args.camera_topic,
+                    "ground_truth_topic": args.ground_truth_topic,
+                    "capture_altitude_msl": ground_truth.altitude,
+                    "capture_latitude": ground_truth.latitude,
+                    "capture_longitude": ground_truth.longitude,
+                    "capture_heading_deg": ground_truth.heading_deg,
+                    "position_error_m": round(horizontal_error, 3),
+                    "heading_error_deg": round(heading_error, 3),
+                },
+            )
+
+        def _on_image(self, msg) -> None:
+            self._latest_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+
+        def _on_ground_truth(self, msg) -> None:
+            q = msg.pose.pose.orientation
+            siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+            cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+            yaw_rad = math.atan2(siny_cosp, cosy_cosp)
+            yaw_deg = math.degrees(yaw_rad) % 360.0
+            lat, lon, alt = enu_to_geodetic(
+                msg.pose.pose.position.x,
+                msg.pose.pose.position.y,
+                msg.pose.pose.position.z,
+                origin_lat,
+                origin_lon,
+                origin_alt,
+            )
+            stamp = msg.header.stamp
+            timestamp = None
+            if getattr(stamp, "sec", 0) or getattr(stamp, "nanosec", 0):
+                timestamp = float(stamp.sec) + float(stamp.nanosec) / 1e9
+            self._latest_ground_truth = GroundTruthPose(
+                latitude=lat,
+                longitude=lon,
+                altitude=alt,
+                heading_deg=yaw_deg,
+                timestamp=timestamp,
+            )
+
+    rclpy.init(args=None)
+    node = GazeboReferenceCapture()
+    captured_images: list[CapturedImage] = []
+
+    try:
+        print("Waiting for first camera frame and ground-truth sample...")
+        while rclpy.ok() and not node.ready():
+            rclpy.spin_once(node, timeout_sec=0.2)
+
+        for index, point in enumerate(reference_points, start=1):
+            print(
+                f"[{index}/{len(reference_points)}] target={point.id} "
+                f"lat={point.latitude:.6f} lon={point.longitude:.6f} "
+                f"heading={point.heading:.1f}"
+            )
+            last_status_log = 0.0
+            while rclpy.ok():
+                rclpy.spin_once(node, timeout_sec=0.2)
+                status = node.current_status(point)
+                if status is None:
+                    continue
+                position_error, heading_error = status
+                now = time.time()
+                if now - last_status_log >= 1.0:
+                    print(
+                        f"  current error: position={position_error:.2f} m "
+                        f"heading={heading_error:.1f} deg"
+                    )
+                    last_status_log = now
+
+                if position_error > args.position_tolerance_m:
+                    continue
+                if heading_error > args.heading_tolerance_deg:
+                    continue
+
+                if args.auto_capture:
+                    captured = node.capture(point)
+                    captured_images.append(captured)
+                    print(f"  captured {point.id} -> {captured.filepath}")
+                    break
+
+                command = input(
+                    "  within tolerance. Press Enter to capture, 's' to skip, "
+                    "or 'q' to abort: "
+                ).strip().lower()
+                if command == "q":
+                    print("Capture aborted by user.")
+                    return 1
+                if command == "s":
+                    print(f"  skipped {point.id}")
+                    break
+
+                captured = node.capture(point)
+                captured_images.append(captured)
+                print(f"  captured {point.id} -> {captured.filepath}")
+                break
+
+        if not captured_images:
+            print("No images were captured; no database index written.", file=sys.stderr)
+            return 1
+
+        index_path = generate_database_index(
+            captured_images,
+            output_dir,
+            config,
+            database_source_type="gazebo_camera",
+        )
+        coverage = validate_coverage(captured_images, config)
+        print(f"Database index saved to: {index_path}")
+        print(f"Coverage: {coverage}")
+        return 0
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()

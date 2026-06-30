@@ -43,7 +43,7 @@ setup(
         "simulation/scripts",
     ),
     install_requires=[
-        "numpy",
+        "numpy<2",
         "opencv-python-headless",
         "Pillow",
         "PyYAML",

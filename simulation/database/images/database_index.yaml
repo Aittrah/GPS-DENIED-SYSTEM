@@ -12,6 +12,7 @@ database:
   image_count: 23
   location: QAU Campus, Islamabad, Pakistan
   name: QAU Campus Reference Database
+  source_type: synthetic
   version: 1.0.0
 images:
 - altitude: 550

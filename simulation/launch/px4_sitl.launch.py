@@ -127,7 +127,7 @@ def generate_launch_description():
     #     cmd=[
     #         'mavlink-routerd',
     #         '-e', '127.0.0.1:14550',  # QGroundControl
-    #         '-e', '127.0.0.1:14551',  # VNS
+    #         '-e', '127.0.0.1:14540',  # VNS / onboard-computer MAVSDK
     #         '0.0.0.0:14540'
     #     ],
     #     output='screen'

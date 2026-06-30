@@ -18,7 +18,7 @@ import logging
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -52,6 +52,15 @@ except ImportError:
     sys.exit(1)
 
 logger = logging.getLogger("vns.build_reference_database")
+
+
+def resolve_cli_path(path_value: str, *, script_dir: Path) -> Path:
+    candidate = Path(path_value)
+    if candidate.is_absolute():
+        return candidate.resolve()
+    if candidate.exists():
+        return candidate.resolve()
+    return (script_dir / candidate).resolve()
 
 
 @dataclass
@@ -159,11 +168,10 @@ def extract_orb_features(
     return kp_array, descriptors
 
 
-def load_image_index(index_path: str) -> List[dict]:
-    """Load image index from YAML file."""
+def load_image_index(index_path: str) -> dict:
+    """Load the full image index document from YAML."""
     with open(index_path, 'r') as f:
-        data = yaml.safe_load(f)
-    return data.get('images', [])
+        return yaml.safe_load(f) or {}
 
 
 def build_database(
@@ -173,7 +181,9 @@ def build_database(
 ) -> ReferenceDatabase:
     """Build reference database from image index."""
     index_file = Path(index_path).resolve()
-    images = load_image_index(str(index_file))
+    index_document = load_image_index(str(index_file))
+    images = index_document.get('images', [])
+    database_meta = index_document.get('database', {})
     
     if not images:
         raise ValueError("No images found in index")
@@ -182,8 +192,8 @@ def build_database(
     first = images[0]
     db = ReferenceDatabase(
         version="2.0.0",  # 2.0.0 stores the safe archive format
-        name="QAU Campus Reference Database",
-        created=datetime.utcnow().isoformat(),
+        name=database_meta.get("name", "QAU Campus Reference Database"),
+        created=datetime.now(timezone.utc).isoformat(),
         algorithm=algorithm,
         bounds=GeoBounds(
             min_lat=first['latitude'],
@@ -204,6 +214,26 @@ def build_database(
                 str(image_path),
                 max_features
             )
+            metadata = {
+                'width': img_data.get('width', 0),
+                'height': img_data.get('height', 0),
+            }
+            if database_meta.get("source_type") is not None:
+                metadata.setdefault("source_type", database_meta.get("source_type"))
+            for key, value in img_data.items():
+                if key in {
+                    'id',
+                    'filepath',
+                    'latitude',
+                    'longitude',
+                    'altitude',
+                    'heading',
+                    'timestamp',
+                    'width',
+                    'height',
+                }:
+                    continue
+                metadata[key] = value
 
             entry = DatabaseEntry(
                 id=img_data['id'],
@@ -217,10 +247,7 @@ def build_database(
                 feature_algorithm=algorithm,
                 keypoints=keypoints,
                 descriptors=descriptors,
-                metadata={
-                    'width': img_data.get('width', 0),
-                    'height': img_data.get('height', 0)
-                }
+                metadata=metadata,
             )
             
             db.add_entry(entry)
@@ -488,11 +515,13 @@ def main():
 
     # Resolve paths
     script_dir = Path(__file__).resolve().parent
-    index_path = (script_dir / args.input).resolve()
-    output_path = (script_dir / args.output).resolve()
+    index_path = resolve_cli_path(args.input, script_dir=script_dir)
+    output_path = resolve_cli_path(args.output, script_dir=script_dir)
 
     # Build-time BoVW defaults from simulation.yaml (CLI flags override these).
-    bovw_cfg = load_bovw_defaults((script_dir / '../config/simulation.yaml').resolve())
+    bovw_cfg = load_bovw_defaults(
+        resolve_cli_path("../config/simulation.yaml", script_dir=script_dir)
+    )
     vocab_size = args.vocab_size if args.vocab_size is not None else int(bovw_cfg.get('vocab_size', 1000))
     metric = args.metric if args.metric is not None else str(bovw_cfg.get('metric', 'cosine'))
     random_state = args.random_state if args.random_state is not None else int(bovw_cfg.get('random_state', 42))

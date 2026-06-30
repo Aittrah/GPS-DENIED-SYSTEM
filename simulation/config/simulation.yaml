@@ -48,7 +48,7 @@ matching:
 # Coarse retrieval settings
 retrieval:
   top_k: 5
-  mode: "flann"          # packaged runtime selector: "flann" or "bovw"
+  mode: "bovw"           # packaged runtime selector: "flann" or "bovw"
   backend: "flann_lsh"   # legacy alias kept for backward compatibility
   # --- BoVW coarse-retrieval index (offline scalability layer) ---
   # NOTE on config authority: vocab_size/metric/random_state/batch_size are
@@ -58,7 +58,7 @@ retrieval:
   # here does NOT retroactively change an already-built database.
   bovw:
     enabled: true
-    fallback_to_flann: false  # fail fast if mode=bovw but the DB lacks a BoVW index
+    fallback_to_flann: true   # degrade to FLANN/LSH if the DB lacks a BoVW index
     vocab_size: 1000      # K visual words (k-means clusters); auto-clamped if total descriptors < K
     metric: "cosine"      # histogram NN metric: "cosine" or "l2"
     random_state: 42      # MiniBatchKMeans seed -> reproducible rebuilds
@@ -91,7 +91,7 @@ database:
 
 # MAVLink connection (PX4 SITL)
 mavlink:
-  connection_string: "udp://:14551"
+  connection_string: "udp://:14540"  # PX4 SITL onboard-computer MAVSDK port; 14550 is QGC/GCS
   system_id: 1
   component_id: 196  # MAV_COMP_ID_VISUAL_INERTIAL_ODOMETRY
   max_reconnect_attempts: 5

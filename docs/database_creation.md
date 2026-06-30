@@ -1,70 +1,164 @@
 # Reference Database Creation Guide
 
-This guide walks you through building, capturing, and validating a geotagged reference database (`.vnsdb`) for the Visual Navigation System.
+This guide defines the current FR-11 database workflow for two different cases:
+
+- the **synthetic baseline** used by offline/unit-style tests,
+- the **real Gazebo downward-camera capture** path required for meaningful end-to-end PX4/Gazebo validation.
+
+The committed `simulation/database/images/` and `simulation/database/qau_campus.vnsdb`
+artifacts are currently the explicit **synthetic baseline**. They are labeled
+`source_type: synthetic` and should not be mistaken for live Gazebo camera captures.
 
 ---
 
-## 1. Flight Planning for Reference Image Capture
+## 1. ROS2 / Python Preflight
 
-To ensure robust visual matching, reference images must provide continuous coverage with high spatial overlap.
+Run this in the Ubuntu 22.04 ROS 2 Humble environment that will launch `vns_node`:
 
-- **Overlap:** Ensure at least **60% forward overlap** and **40% side overlap** between image capture points.
-- **Altitude:** Capture images at the same target altitude as your intended mission (typically 30m to 60m AGL).
-- **Lighting:** Capture under uniform, diffuse lighting (mid-day or overcast) to prevent long shadows from skewing feature descriptors.
-- **Pattern:** Use a lawnmower flight grid pattern for systematic coverage.
-
----
-
-## 2. Capturing Geotagged Images
-
-### Simulation Capture
-To capture reference images from the Gazebo simulation environment using our built-in synthetic image generator:
 ```bash
-# Capture synthetic reference images based on QAU Campus metadata
-vns database capture --synthetic --config simulation/database/qau_reference_metadata.yaml --output simulation/database/images
+source /opt/ros/humble/setup.bash
+pip3 install "numpy<2"
+# Only if pytest/import validation reports it missing:
+# pip3 install lark
+python3 simulation/scripts/check_ros2_python_env.py
 ```
 
-### Live Hardware Capture
-For a real drone flight, collect high-resolution JPG images with geotag coordinates (latitude, longitude, altitude, and yaw/heading) written into a database index YAML file:
-```yaml
-database:
-  name: "QAU Campus Reference Database"
-  version: "1.0.0"
-  location: "Islamabad, Pakistan"
-  bounds:
-    min_latitude: 33.740
-    max_latitude: 33.755
-    min_longitude: 73.130
-    max_longitude: 73.145
-images:
-  - id: "qau_admin_01"
-    filepath: "simulation/database/images/qau_admin_01.jpg"
-    latitude: 33.7470
-    longitude: 73.1370
-    altitude: 580.0
-    heading: 0.0
-```
+If the preflight reports a NumPy / `cv_bridge` incompatibility, fix that before
+starting Gazebo. The ROS node now fails early instead of crashing later in the
+camera callback with `_ARRAY_API not found`.
 
 ---
 
-## 3. Indexing and Building the Feature Database
+## 2. Synthetic Baseline
 
-Once the images are collected and indexed, process them with our CLI batch indexing tool to extract ORB descriptors and package them into a binary `.vnsdb` format:
+Use the synthetic generator only for offline tests and the ground-texture
+workflow. It does **not** produce real Gazebo camera imagery.
+
 ```bash
-vns database build --input simulation/database/images/database_index.yaml --output simulation/database/qau_campus.vnsdb
+python3 simulation/scripts/generate_synthetic_reference_images.py \
+  --config simulation/database/qau_reference_metadata.yaml \
+  --output simulation/database/images/synthetic
+```
+
+The generated `database_index.yaml` is tagged `source_type: synthetic`. If you
+build a database from it, the safe archive preserves that provenance so runtime
+and tests can warn when a synthetic DB is being used for a live simulation run.
+
+---
+
+## 3. Real Gazebo Camera Capture
+
+This is the workflow needed for the first meaningful end-to-end VNS simulation.
+The capture script subscribes to:
+
+- `/vns_drone/downward_camera/image_raw`
+- `/vns_drone/ground_truth`
+
+It stores JPG frames under `simulation/database/images/gazebo/` and writes a
+manifest with the existing `database_index.yaml` contract plus provenance fields
+such as `source_type`, `source_topic`, `ground_truth_topic`, and
+`capture_altitude_msl`.
+
+### 3.1 Start the stack
+
+```bash
+ros2 launch vns full_simulation.launch.py headless:=true
+```
+
+Expected startup logs include:
+
+- `MAVLink enabled; connection string=udp://:14540`
+- `Connected to flight controller on udp://:14540`
+- later, after localization starts succeeding:
+  `VISION_POSITION_ESTIMATE send path active on udp://:14540`
+
+If you want to validate the visual pipeline before PX4 is involved, use:
+
+```bash
+ros2 launch vns localization_test.launch.py headless:=true
+```
+
+### 3.2 Capture the reference set
+
+Manually position or fly the drone to each reference point from
+`simulation/database/qau_reference_metadata.yaml`, then run:
+
+```bash
+python3 simulation/scripts/capture_reference_images.py \
+  --config simulation/database/qau_reference_metadata.yaml \
+  --simulation-config simulation/config/simulation.yaml \
+  --output simulation/database/images/gazebo \
+  --camera-topic /vns_drone/downward_camera/image_raw \
+  --ground-truth-topic /vns_drone/ground_truth \
+  --position-tolerance-m 3.0 \
+  --heading-tolerance-deg 20.0
+```
+
+For an automated flow once the drone is already being moved to the targets:
+
+```bash
+python3 simulation/scripts/capture_reference_images.py \
+  --config simulation/database/qau_reference_metadata.yaml \
+  --simulation-config simulation/config/simulation.yaml \
+  --output simulation/database/images/gazebo \
+  --auto-capture
+```
+
+By default the script refuses to overwrite an existing capture directory. Use
+`--overwrite` only when you intentionally want to replace an earlier run.
+
+---
+
+## 4. Build Or Rebuild `qau_campus.vnsdb`
+
+After capturing real Gazebo frames, rebuild the active simulation database:
+
+```bash
+python3 simulation/scripts/build_reference_database.py \
+  --input simulation/database/images/gazebo/database_index.yaml \
+  --output simulation/database/qau_campus.vnsdb \
+  --build-vocab
+```
+
+The active full-simulation config reads `simulation/database/qau_campus.vnsdb`,
+so rebuilding that file is the step that switches the live run away from the
+synthetic baseline.
+
+For imported external real imagery, the same builder still works:
+
+```bash
+python3 simulation/scripts/import_real_reference_imagery.py \
+  --manifest /path/to/real_manifest.yaml \
+  --image-root /path/to/source_images \
+  --output simulation/database/imported/database_index.yaml \
+  --copy-images-to simulation/database/imported/images
+
+python3 simulation/scripts/build_reference_database.py \
+  --input simulation/database/imported/database_index.yaml \
+  --output simulation/database/imported/qau_real.vnsdb \
+  --build-vocab
 ```
 
 ---
 
-## 4. Validating and Inspecting the Reference Database
+## 5. Inspect And Validate
 
-Before deployment, verify the integrity, feature count, and boundaries of your reference database using the inspection tool:
+Inspect the rebuilt database:
+
 ```bash
 vns database inspect simulation/database/qau_campus.vnsdb
 ```
 
-### Coverage Audit
-A healthy reference database should have:
-- At least **100+ keypoints** extracted per image.
-- Geographic bounds matching the target area.
-- No duplicate entries.
+Recommended checks:
+
+- `python3 -m pytest tests/ -q`
+- `python3 simulation/scripts/test_run.py`
+- confirm the rebuilt DB entries are no longer tagged `source_type: synthetic`
+- confirm the live full simulation no longer logs the synthetic DB warning
+
+For GNSS-denied end-to-end validation, look for logs like:
+
+- `GNSS` state transitions from healthy to denied
+- `Mode: VISION` or `Mode: DR` in runtime/evaluation output
+- successful reference-image matches instead of `no_geometric_match`
+- `VISION_POSITION_ESTIMATE send path active on udp://:14540`

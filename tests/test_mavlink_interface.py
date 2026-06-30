@@ -4,6 +4,12 @@ import logging
 from vns.interfaces.mavlink_interface import GpsStatus, MAVLinkInterface
 
 
+def test_default_connection_string_targets_px4_sdk_port() -> None:
+    interface = MAVLinkInterface()
+
+    assert interface.connection_string == "udp://:14540"
+
+
 def test_status_returns_isolated_snapshot() -> None:
     interface = MAVLinkInterface()
     interface._gps_status = GpsStatus(
