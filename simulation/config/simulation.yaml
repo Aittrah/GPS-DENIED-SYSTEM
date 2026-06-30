@@ -110,7 +110,8 @@ logging:
   max_size_mb: 100
   retention_count: 5
   log_to_console: true
-  log_images: true  # Save matched images for debugging
+  log_images: true  # Save downward-camera frames (PNG + manifest) under log_dir/images
+  image_log_stride: 1  # Save every Nth frame (raise to decimate at 30 Hz)
   log_features: true  # Log feature extraction details
 
 # Simulation-specific settings

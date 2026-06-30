@@ -150,6 +150,7 @@ class LoggingConfig(VnsBaseModel):
     retention_count: int = 5
     log_to_console: bool = True
     log_images: bool = False
+    image_log_stride: int = 1
     log_features: bool = False
 
 

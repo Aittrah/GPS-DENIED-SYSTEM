@@ -46,7 +46,8 @@ from vns.utils.camera_topic import (
     render_sdf_with_camera_topic,
 )
 from vns.utils.paths import (
-    prepend_search_path,
+    compose_gazebo_model_path,
+    compose_gazebo_resource_path,
     resolve_simulation_root,
     resolve_vns_python,
 )
@@ -161,15 +162,18 @@ def generate_launch_description():
 
     # ==================== Environment Setup ====================
 
-    # Gazebo Classic uses GAZEBO_MODEL_PATH (not GZ_SIM_RESOURCE_PATH)
+    # Gazebo Classic uses GAZEBO_MODEL_PATH (not GZ_SIM_RESOURCE_PATH).
+    # compose_gazebo_* also fold in the Gazebo share dir (/usr/share/gazebo-11)
+    # so the camera sensor's RTShaderSystem shaders and base models resolve
+    # without manually sourcing /usr/share/gazebo/setup.sh first.
     gazebo_model_path = SetEnvironmentVariable(
         'GAZEBO_MODEL_PATH',
-        prepend_search_path(models_dir, 'GAZEBO_MODEL_PATH'),
+        compose_gazebo_model_path(models_dir),
     )
 
     gazebo_resource_path = SetEnvironmentVariable(
         'GAZEBO_RESOURCE_PATH',
-        prepend_search_path(worlds_dir, 'GAZEBO_RESOURCE_PATH'),
+        compose_gazebo_resource_path(worlds_dir),
     )
 
     # Disable the online model database so gzserver does not block on startup

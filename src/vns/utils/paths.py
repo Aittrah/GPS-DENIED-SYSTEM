@@ -55,6 +55,87 @@ def prepend_search_path(
     return os.pathsep.join(parts)
 
 
+def _gazebo_version_key(path: Path) -> tuple[int, ...]:
+    """Sort key so e.g. gazebo-11 ranks above gazebo-9 (and unversioned last)."""
+    suffix = path.name.split("-", 1)[1] if "-" in path.name else ""
+    try:
+        return tuple(int(part) for part in suffix.split("."))
+    except ValueError:
+        return (-1,)
+
+
+def detect_gazebo_share_dir(search_root: str | Path = "/usr/share") -> str | None:
+    """Locate the Gazebo Classic share directory holding shaders/media.
+
+    This directory (e.g. ``/usr/share/gazebo-11``) must be on
+    ``GAZEBO_RESOURCE_PATH`` or the ``type='camera'`` sensor cannot find the
+    RTShaderSystem shader libs and renders zero frames. Prefers a versioned
+    dir that actually contains the shader programs, then falls back to any
+    ``gazebo*`` dir that looks like a share tree, so a future Gazebo version is
+    picked up without code changes. Returns ``None`` if nothing suitable exists.
+    """
+    candidates = sorted(
+        (entry for entry in Path(search_root).glob("gazebo*") if entry.is_dir()),
+        key=_gazebo_version_key,
+        reverse=True,
+    )
+    # Prefer a dir that actually carries the shader programs the camera needs.
+    for path in candidates:
+        if (path / "media" / "materials" / "programs").is_dir():
+            return str(path)
+    # Fall back to anything that still looks like a gazebo share tree.
+    for path in candidates:
+        if (path / "media").is_dir() or (path / "setup.sh").exists():
+            return str(path)
+    return None
+
+
+def compose_gazebo_resource_path(
+    worlds_dir: str | Path,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Build ``GAZEBO_RESOURCE_PATH``: worlds dir, gazebo share dir, then existing.
+
+    The worlds dir comes first so the world's custom materials win; the gazebo
+    share dir supplies the shaders/media the camera sensor needs to render.
+    This removes the need to manually ``source /usr/share/gazebo/setup.sh``
+    before ``ros2 launch``.
+    """
+    current_env = os.environ if env is None else env
+    parts = [str(Path(worlds_dir))]
+    share_dir = detect_gazebo_share_dir()
+    if share_dir:
+        parts.append(share_dir)
+    existing = current_env.get("GAZEBO_RESOURCE_PATH", "")
+    if existing:
+        parts.append(existing)
+    return os.pathsep.join(parts)
+
+
+def compose_gazebo_model_path(
+    models_dir: str | Path,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Build ``GAZEBO_MODEL_PATH``: project models, gazebo base models, then existing.
+
+    Appending ``<share>/models`` lets base models (e.g. ``sun``) resolve offline
+    even with the online model database disabled.
+    """
+    current_env = os.environ if env is None else env
+    parts = [str(Path(models_dir))]
+    share_dir = detect_gazebo_share_dir()
+    if share_dir:
+        base_models = Path(share_dir) / "models"
+        if base_models.is_dir():
+            parts.append(str(base_models))
+    existing = current_env.get("GAZEBO_MODEL_PATH", "")
+    if existing:
+        parts.append(existing)
+    return os.pathsep.join(parts)
+
+
 def resolve_vns_python(
     simulation_root: str | Path,
     *,
@@ -93,7 +174,13 @@ def resolve_simulation_root(anchor: str | Path | None = None) -> Path:
     except ImportError:
         pass
     else:
-        candidates.append(Path(get_package_share_directory("vns")) / "simulation")
+        # Best-effort: 'vns' may not be installed as a ROS package (e.g. running
+        # from a source checkout with ROS sourced), in which case this raises
+        # PackageNotFoundError — skip the ament candidate rather than abort.
+        try:
+            candidates.append(Path(get_package_share_directory("vns")) / "simulation")
+        except Exception:
+            pass
 
     seen: set[Path] = set()
     for candidate in candidates:

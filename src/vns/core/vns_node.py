@@ -25,7 +25,7 @@ from vns.database.reference_db import ReferenceDatabase
 from vns.interfaces.mavlink_interface import MAVLinkInterface
 from vns.utils.coordinates import enu_to_geodetic, geodetic_to_enu
 from vns.utils.logging import setup_logging
-from vns.validation import JsonlEvaluationLogger
+from vns.validation import ImageFrameLogger, JsonlEvaluationLogger
 
 
 class VnsNode(Node):
@@ -71,6 +71,11 @@ class VnsNode(Node):
         self._evaluation_logger = JsonlEvaluationLogger(
             enabled=self._evaluation_logging_enabled,
             log_dir=logging_cfg.log_dir,
+        )
+        self._image_logger = ImageFrameLogger(
+            enabled=bool(logging_cfg.log_images),
+            log_dir=logging_cfg.log_dir,
+            stride=logging_cfg.image_log_stride,
         )
 
         ros_cfg = self._config.model.ros
@@ -184,6 +189,9 @@ class VnsNode(Node):
 
     def _on_image(self, msg: Image):
         cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        self._image_logger.save(
+            cv_image, timestamp=self._stamp_to_seconds(msg.header.stamp)
+        )
         result = self._runtime.process_frame(cv_image)
         self._log_evaluation_sample(msg, result)
         if not result.success:
@@ -310,6 +318,8 @@ class VnsNode(Node):
     def destroy_node(self):
         if self._evaluation_logger is not None:
             self._evaluation_logger.close()
+        if self._image_logger is not None:
+            self._image_logger.close()
         if self._mavlink is not None and self._loop is not None and self._loop.is_running():
             future = asyncio.run_coroutine_threadsafe(
                 self._mavlink.disconnect(), self._loop

@@ -29,9 +29,19 @@ from launch.actions import (
 )
 from launch.substitutions import LaunchConfiguration
 
+from vns.utils.paths import (
+    compose_gazebo_model_path,
+    compose_gazebo_resource_path,
+    resolve_simulation_root,
+)
+
 
 def generate_launch_description():
     """Generate the launch description for PX4 SITL on Gazebo Classic."""
+
+    simulation_root = resolve_simulation_root(Path(__file__).resolve())
+    worlds_dir = simulation_root / 'worlds'
+    models_dir = simulation_root / 'models'
 
     # ==================== Launch Arguments ====================
 
@@ -78,6 +88,21 @@ def generate_launch_description():
         'none'
     )
 
+    # This entrypoint starts PX4 only (Gazebo is launched separately), but we
+    # compose the Gazebo asset paths here too — including the Gazebo share dir
+    # (/usr/share/gazebo-11) — so a gzserver that inherits this environment can
+    # resolve the camera sensor's shaders and base models consistently with the
+    # other launch files.
+    gazebo_model_path = SetEnvironmentVariable(
+        'GAZEBO_MODEL_PATH',
+        compose_gazebo_model_path(models_dir),
+    )
+    gazebo_resource_path = SetEnvironmentVariable(
+        'GAZEBO_RESOURCE_PATH',
+        compose_gazebo_resource_path(worlds_dir),
+    )
+    gazebo_model_db = SetEnvironmentVariable('GAZEBO_MODEL_DATABASE_URI', '')
+
     # ==================== PX4 SITL Process ====================
     #
     # `make px4_sitl none_iris` builds (if needed) and starts PX4 expecting
@@ -119,6 +144,9 @@ def generate_launch_description():
         px4_home,
         px4_sim_model,
         px4_sim_world,
+        gazebo_model_path,
+        gazebo_resource_path,
+        gazebo_model_db,
 
         # Delayed start so Gazebo (if launched in parallel) has time to come up
         TimerAction(period=5.0, actions=[px4_sitl]),
