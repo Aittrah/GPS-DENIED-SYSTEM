@@ -172,7 +172,11 @@ def main() -> int:
                 width=image.shape[1],
                 height=image.shape[0],
                 extra={
+                    "description": point.description,
+                    **point.extra,
                     "source_type": "synthetic",
+                    "capture_status": "synthetic_only",
+                    "manual_capture_required": True,
                     "generator": "generate_synthetic_reference_images.py",
                 },
             )

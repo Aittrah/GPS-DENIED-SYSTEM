@@ -10,6 +10,7 @@ import math
 from pathlib import Path
 import sys
 import time
+from typing import Any
 
 import cv2
 import yaml
@@ -93,7 +94,31 @@ def _import_ros_types() -> tuple[object, object, object, object]:
     return rclpy, Node, Image, Odometry
 
 
-def main() -> int:
+def _missing_publisher_topics(node: Any, topics: list[str]) -> list[str]:
+    """Return the subset of `topics` that currently have no active publisher."""
+    return [topic for topic in topics if not node.get_publishers_info_by_topic(topic)]
+
+
+def _wait_for_required_topics(
+    node: Any,
+    rclpy_module: Any,
+    topics: list[str],
+    *,
+    timeout_sec: float,
+    poll_interval_sec: float = 0.5,
+) -> list[str]:
+    """Poll the ROS graph until every topic in `topics` has a publisher, or
+    `timeout_sec` elapses. Returns whichever topics are still missing a
+    publisher when the function returns."""
+    deadline = time.monotonic() + max(timeout_sec, 0.0)
+    missing = _missing_publisher_topics(node, topics)
+    while missing and time.monotonic() < deadline:
+        rclpy_module.spin_once(node, timeout_sec=poll_interval_sec)
+        missing = _missing_publisher_topics(node, topics)
+    return missing
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Capture real Gazebo downward-camera reference images."
     )
@@ -128,6 +153,16 @@ def main() -> int:
         help="Ground-truth odometry topic",
     )
     parser.add_argument(
+        "--timeout-sec",
+        type=float,
+        default=30.0,
+        help=(
+            "Seconds to wait for required topic publishers to appear and for "
+            "the first camera/ground-truth sample to arrive before failing "
+            "with a clear error (default: 30.0)"
+        ),
+    )
+    parser.add_argument(
         "--position-tolerance-m",
         type=float,
         default=3.0,
@@ -149,12 +184,7 @@ def main() -> int:
         action="store_true",
         help="Allow overwriting existing captured images in the output directory",
     )
-    args = parser.parse_args()
-
-    bridge_check = check_cv_bridge_compatibility()
-    print(bridge_check.message)
-    if not bridge_check.ok:
-        return 1
+    args = parser.parse_args(argv)
 
     script_dir = Path(__file__).resolve().parent
     config_path = _resolve_cli_path(args.config, script_dir=script_dir)
@@ -163,8 +193,40 @@ def main() -> int:
         script_dir=script_dir,
     )
     output_dir = _resolve_cli_path(args.output, script_dir=script_dir)
-    config, reference_points = load_reference_config(config_path)
-    origin_lat, origin_lon, origin_alt = _load_geo_origin(simulation_config_path)
+
+    print(f"Reference config: {config_path}")
+    print(f"Simulation config: {simulation_config_path}")
+    print(f"Output directory: {output_dir}")
+    print(f"Camera topic: {args.camera_topic}")
+    print(f"Ground-truth topic: {args.ground_truth_topic}")
+
+    if not config_path.exists():
+        print(f"Reference config not found: {config_path}", file=sys.stderr)
+        return 1
+    if not simulation_config_path.exists():
+        print(f"Simulation config not found: {simulation_config_path}", file=sys.stderr)
+        return 1
+
+    try:
+        config, reference_points = load_reference_config(config_path)
+    except (OSError, yaml.YAMLError, KeyError, ValueError) as exc:
+        print(f"Failed to load reference config {config_path}: {exc}", file=sys.stderr)
+        return 1
+    print(f"Loaded {len(reference_points)} reference point(s) from {config_path}")
+
+    try:
+        origin_lat, origin_lon, origin_alt = _load_geo_origin(simulation_config_path)
+    except (OSError, yaml.YAMLError, ValueError) as exc:
+        print(
+            f"Failed to load simulation config {simulation_config_path}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+
+    bridge_check = check_cv_bridge_compatibility()
+    print(bridge_check.message)
+    if not bridge_check.ok:
+        return 1
 
     output_dir.mkdir(parents=True, exist_ok=True)
     if not args.overwrite:
@@ -231,7 +293,11 @@ def main() -> int:
                 width=frame.shape[1],
                 height=frame.shape[0],
                 extra={
+                    "description": target.description,
+                    **target.extra,
                     "source_type": "gazebo_camera",
+                    "capture_status": "captured_gazebo",
+                    "manual_capture_required": False,
                     "source_topic": args.camera_topic,
                     "ground_truth_topic": args.ground_truth_topic,
                     "capture_altitude_msl": ground_truth.altitude,
@@ -273,76 +339,132 @@ def main() -> int:
             )
 
     rclpy.init(args=None)
-    node = GazeboReferenceCapture()
-    captured_images: list[CapturedImage] = []
-
     try:
-        print("Waiting for first camera frame and ground-truth sample...")
-        while rclpy.ok() and not node.ready():
-            rclpy.spin_once(node, timeout_sec=0.2)
-
-        for index, point in enumerate(reference_points, start=1):
+        node = GazeboReferenceCapture()
+        captured_images: list[CapturedImage] = []
+        try:
+            required_topics = [args.camera_topic, args.ground_truth_topic]
             print(
-                f"[{index}/{len(reference_points)}] target={point.id} "
-                f"lat={point.latitude:.6f} lon={point.longitude:.6f} "
-                f"heading={point.heading:.1f}"
+                f"Checking for active publishers on {required_topics} "
+                f"(timeout {args.timeout_sec:.0f}s)..."
             )
-            last_status_log = 0.0
-            while rclpy.ok():
-                rclpy.spin_once(node, timeout_sec=0.2)
-                status = node.current_status(point)
-                if status is None:
-                    continue
-                position_error, heading_error = status
-                now = time.time()
-                if now - last_status_log >= 1.0:
+            missing_topics = _wait_for_required_topics(
+                node, rclpy, required_topics, timeout_sec=args.timeout_sec,
+            )
+            if missing_topics:
+                for topic in missing_topics:
                     print(
-                        f"  current error: position={position_error:.2f} m "
-                        f"heading={heading_error:.1f} deg"
+                        f"No publisher detected on required topic '{topic}' "
+                        f"after {args.timeout_sec:.0f}s.",
+                        file=sys.stderr,
                     )
-                    last_status_log = now
+                print(
+                    "Hint: run `ros2 topic list` in another terminal to confirm "
+                    "the simulation is publishing these topics, and make sure "
+                    "the simulation stack is running, e.g.:\n"
+                    "  ros2 launch vns full_simulation.launch.py headless:=true\n"
+                    "or:\n"
+                    "  ros2 launch vns localization_test.launch.py headless:=true",
+                    file=sys.stderr,
+                )
+                return 1
 
-                if position_error > args.position_tolerance_m:
-                    continue
-                if heading_error > args.heading_tolerance_deg:
-                    continue
+            print("Waiting for first camera frame and ground-truth sample...")
+            deadline = time.monotonic() + args.timeout_sec
+            while rclpy.ok() and not node.ready():
+                if time.monotonic() >= deadline:
+                    print(
+                        f"Timed out after {args.timeout_sec:.0f}s waiting for "
+                        f"the first camera frame and ground-truth sample on "
+                        f"{args.camera_topic} / {args.ground_truth_topic}.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                rclpy.spin_once(node, timeout_sec=0.2)
 
-                if args.auto_capture:
+            for index, point in enumerate(reference_points, start=1):
+                print(
+                    f"[{index}/{len(reference_points)}] target={point.id} "
+                    f"lat={point.latitude:.6f} lon={point.longitude:.6f} "
+                    f"heading={point.heading:.1f}"
+                )
+                last_status_log = 0.0
+                while rclpy.ok():
+                    rclpy.spin_once(node, timeout_sec=0.2)
+                    status = node.current_status(point)
+                    if status is None:
+                        continue
+                    position_error, heading_error = status
+                    now = time.time()
+                    if now - last_status_log >= 1.0:
+                        print(
+                            f"  current error: position={position_error:.2f} m "
+                            f"heading={heading_error:.1f} deg"
+                        )
+                        last_status_log = now
+
+                    if position_error > args.position_tolerance_m:
+                        continue
+                    if heading_error > args.heading_tolerance_deg:
+                        continue
+
+                    if args.auto_capture:
+                        captured = node.capture(point)
+                        captured_images.append(captured)
+                        print(f"  captured {point.id} -> {captured.filepath}")
+                        break
+
+                    command = input(
+                        "  within tolerance. Press Enter to capture, 's' to skip, "
+                        "or 'q' to abort: "
+                    ).strip().lower()
+                    if command == "q":
+                        print("Capture aborted by user.")
+                        return 1
+                    if command == "s":
+                        print(f"  skipped {point.id}")
+                        break
+
                     captured = node.capture(point)
                     captured_images.append(captured)
                     print(f"  captured {point.id} -> {captured.filepath}")
                     break
 
-                command = input(
-                    "  within tolerance. Press Enter to capture, 's' to skip, "
-                    "or 'q' to abort: "
-                ).strip().lower()
-                if command == "q":
-                    print("Capture aborted by user.")
-                    return 1
-                if command == "s":
-                    print(f"  skipped {point.id}")
-                    break
+            print(
+                f"Captured {len(captured_images)} of {len(reference_points)} "
+                "reference image(s)."
+            )
 
-                captured = node.capture(point)
-                captured_images.append(captured)
-                print(f"  captured {point.id} -> {captured.filepath}")
-                break
+            if not captured_images:
+                print(
+                    "No images were captured; no database index written.",
+                    file=sys.stderr,
+                )
+                return 1
 
-        if not captured_images:
-            print("No images were captured; no database index written.", file=sys.stderr)
-            return 1
+            try:
+                index_path = generate_database_index(
+                    captured_images,
+                    output_dir,
+                    config,
+                    database_source_type="gazebo_camera",
+                )
+                coverage = validate_coverage(captured_images, config)
+            except (OSError, KeyError, ValueError) as exc:
+                print(
+                    f"Failed to write database index to {output_dir}: {exc}",
+                    file=sys.stderr,
+                )
+                return 1
 
-        index_path = generate_database_index(
-            captured_images,
-            output_dir,
-            config,
-            database_source_type="gazebo_camera",
-        )
-        coverage = validate_coverage(captured_images, config)
-        print(f"Database index saved to: {index_path}")
-        print(f"Coverage: {coverage}")
-        return 0
+            print(f"Database index saved to: {index_path}")
+            print(f"Coverage: {coverage}")
+            return 0
+        finally:
+            node.destroy_node()
     finally:
-        node.destroy_node()
         rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

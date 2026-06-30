@@ -19,6 +19,7 @@ class ReferencePoint:
     altitude: float
     heading: float
     description: str
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -51,6 +52,19 @@ def load_reference_config(config_path: str | Path) -> tuple[dict[str, Any], list
             altitude=float(point_data["altitude"]),
             heading=float(point_data["heading"]),
             description=str(point_data.get("description", "")),
+            extra={
+                key: value
+                for key, value in point_data.items()
+                if key
+                not in {
+                    "id",
+                    "latitude",
+                    "longitude",
+                    "altitude",
+                    "heading",
+                    "description",
+                }
+            },
         )
         for point_data in config.get("reference_points", [])
     ]

@@ -107,6 +107,31 @@ python3 simulation/scripts/capture_reference_images.py \
 By default the script refuses to overwrite an existing capture directory. Use
 `--overwrite` only when you intentionally want to replace an earlier run.
 
+The script validates its environment before capturing anything: it prints the
+resolved config paths, output directory, topics, and reference-point count on
+startup; it confirms `--camera-topic` and `--ground-truth-topic` both have an
+active publisher before waiting for data; and `--timeout-sec` (default `30.0`)
+bounds both that publisher check and the wait for the first camera/ground-truth
+sample. If a required topic has no publisher, or no sample arrives in time, the
+script exits non-zero with a message naming the missing topic and a hint to run
+`ros2 topic list` and confirm the simulation launch file is running. At the end
+it always prints how many images were captured and the path to the written
+`database_index.yaml`.
+
+### 3.3 Troubleshooting
+
+- **Script exits immediately with no output**: you are running a stale copy
+  predating the FR-11 entrypoint fix. The file must end with
+  `if __name__ == "__main__": raise SystemExit(main())`; pull the latest
+  `simulation/scripts/capture_reference_images.py`.
+- **"No publisher detected on required topic ..."**: the simulation stack
+  isn't running yet, or the topic name doesn't match. Run `ros2 topic list`
+  and confirm `ros2 launch vns full_simulation.launch.py headless:=true` (or
+  `localization_test.launch.py`) is up.
+- **"Timed out ... waiting for the first camera frame ..."**: the topic has a
+  publisher but nothing has been received yet (e.g. simulation paused).
+  Increase `--timeout-sec` or unpause Gazebo.
+
 ---
 
 ## 4. Build Or Rebuild `qau_campus.vnsdb`
