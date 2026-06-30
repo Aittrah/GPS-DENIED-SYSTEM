@@ -8,24 +8,29 @@ __pycache__/
 dist/
 build/
 .eggs/
+
+# Virtual environments
 .venv/
+.venv-run/
+.venv-test/
+.venv*/
 venv/
 env/
 
-# Generated data
+# ROS2 / colcon build output
+install/
+log/
+
+# Runtime logs and generated outputs
+logs/
+reports/report_*.json
+reports/report_*.md
+
+# Generated data (mission/map files — track explicitly via git add -f)
 data/database/
 data/patches/satellite/*
 data/patches/uav/*
 data/satellite/processed/*
-data/satellite/raw/*
-data/kml/*
-data/waypoints/*
-!data/database/.gitkeep
-!data/patches/satellite/.gitkeep
-!data/patches/uav/.gitkeep
-!data/satellite/processed/.gitkeep
-!data/satellite/raw/.gitkeep
-!data/kml/.gitkeep
 
 # Misc
 .DS_Store
