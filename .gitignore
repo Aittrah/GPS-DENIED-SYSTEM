@@ -1,47 +1,33 @@
-# Virtual environments
-venv/
-.venv/
-env/
-
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-
-# pytest
-.pytest_cache/
-.coverage
-
-# Build
-dist/
-build/
-*.egg-info/
-
-# IDE
-.kiro/
-.env
-.idea/
-.vscode/
-node_modules/
-dist/
-build/
-
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+.Python
 *.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
 
-# VNS runtime artifacts
-logs/
-reports/
-assign.ipynb
+# Generated data
+data/database/
+data/patches/satellite/*
+data/patches/uav/*
+data/satellite/processed/*
+data/satellite/raw/*
+data/kml/*
+data/waypoints/*
+!data/database/.gitkeep
+!data/patches/satellite/.gitkeep
+!data/patches/uav/.gitkeep
+!data/satellite/processed/.gitkeep
+!data/satellite/raw/.gitkeep
+!data/kml/.gitkeep
 
-# Virtual environments
-.venv*/
-
-# ROS 2 / colcon build artifacts
-install/
-log/
-
-# Claude Code local settings
-.claude/settings.local.json
+# Misc
+.DS_Store
+Thumbs.db
+*.log

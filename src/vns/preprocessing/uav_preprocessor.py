@@ -1,20 +1,26 @@
-﻿from typing import Optional
+from typing import Optional
 import cv2
 import numpy as np
-from .satellite_preprocessor import TARGET_SIZE
+from .satellite_preprocessor import MAX_SHORT_SIDE
+
 
 class UAVPreprocessor:
-
-    TARGET_SIZE = TARGET_SIZE
+    """
+    Pre-processes a single UAV camera frame before patch generation.
+    Mirrors the satellite pipeline so descriptors are comparable.
+    """
 
     def preprocess_frame(self, frame: np.ndarray) -> Optional[np.ndarray]:
         if frame is None or frame.size == 0:
             print('[WARNING] Empty frame received')
             return None
-        frame = cv2.resize(frame, TARGET_SIZE)
-        kernel = np.array([[0,-1,0],[-1,5,-1],[0,-1,0]])
-        frame = cv2.filter2D(frame, -1, kernel)
-        frame = cv2.bilateralFilter(frame, d=9, sigmaColor=75, sigmaSpace=75)
+        # Resize to same scale as satellite patches
+        h, w = frame.shape[:2]
+        short = min(h, w)
+        if short > MAX_SHORT_SIDE:
+            scale = MAX_SHORT_SIDE / short
+            frame = cv2.resize(frame, (int(w * scale), int(h * scale)),
+                               interpolation=cv2.INTER_AREA)
         frame = self._apply_clahe(frame)
         return frame
 

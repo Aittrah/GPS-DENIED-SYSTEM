@@ -8,7 +8,7 @@ IIT Quaid-i-Azam University Islamabad
 """
 
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, simpledialog
 import threading
 import subprocess
 import os
@@ -23,9 +23,26 @@ from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
+# Ensure project root is on sys.path regardless of how the app is launched
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
+
+try:
+    from src.vns.database.reference_database import ReferenceDatabase
+    _DB_AVAILABLE = True
+except Exception:
+    _DB_AVAILABLE = False
+
+try:
+    from src.vns.database.faiss_database import FAISSDatabase
+    _FAISS_AVAILABLE = True
+except Exception:
+    _FAISS_AVAILABLE = False
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DATA CLASSES
@@ -1022,7 +1039,138 @@ class VNSApp:
             anchor="w", pady=(6, 0)
         )
 
+        # ══ STEP 06 — DATABASE ════════════════════════
+        section_label(
+            p, "06  Database  (DINOv2+FAISS)",
+            T.PURPLE
+        )
+        gap(4)
+
+        c6 = card()
+        f6 = tk.Frame(c6, bg=T.BG_CARD)
+        f6.pack(fill=tk.X, padx=14, pady=12)
+
+        # Lat / Lon / Alt inputs
+        for lbl, attr, default in [
+            ("Lat", "_db_lat", "33.7470"),
+            ("Lon", "_db_lon", "73.1370"),
+            ("Alt", "_db_alt", "550.0"),
+        ]:
+            row = tk.Frame(f6, bg=T.BG_CARD)
+            row.pack(fill=tk.X, pady=2)
+            tk.Label(row, text=lbl, width=4,
+                     font=T.FONT_LBL,
+                     fg=T.TEXT_MUTED,
+                     bg=T.BG_CARD).pack(side=tk.LEFT)
+            e = make_entry(row, default, w=14)
+            e.pack(side=tk.LEFT, fill=tk.X,
+                   expand=True, ipady=4, padx=(4, 0))
+            setattr(self, attr, e)
+
+        gap(6)
+
+        ProfButton(
+            f6, "Select Satellite Image",
+            self._on_db_select_image,
+            style="ghost", icon="🛰️"
+        ).pack(fill=tk.X, pady=(0, 3))
+
+        self._db_img_lbl = tk.Label(
+            f6, text="No image selected",
+            font=("Consolas", 8),
+            fg=T.TEXT_MUTED, bg=T.BG_CARD,
+            wraplength=270, justify=tk.LEFT
+        )
+        self._db_img_lbl.pack(anchor="w",
+                               pady=(0, 6))
+
+        br6 = tk.Frame(f6, bg=T.BG_CARD)
+        br6.pack(fill=tk.X, pady=(0, 4))
+
+        ProfButton(
+            br6, "Build Database",
+            self._on_build_faiss_db,
+            style="primary", icon="🗄️"
+        ).pack(side=tk.LEFT, fill=tk.X,
+               expand=True, padx=(0, 3))
+
+        ProfButton(
+            br6, "Load",
+            self._on_load_faiss_db,
+            style="ghost", icon="↑"
+        ).pack(side=tk.LEFT)
+
+        self._db_progress = tk.Label(
+            f6, text="",
+            font=("Consolas", 8),
+            fg=T.TEXT_MUTED, bg=T.BG_CARD
+        )
+        self._db_progress.pack(anchor="w",
+                               pady=(0, 4))
+
+        self._db_status = tk.Label(
+            f6, text="Status: not built",
+            font=("Consolas", 8),
+            fg=T.TEXT_MUTED, bg=T.BG_CARD,
+            justify=tk.LEFT, wraplength=270
+        )
+        self._db_status.pack(anchor="w",
+                             pady=(0, 6))
+
+        ProfButton(
+            f6, "Clear Database",
+            self._on_clear_faiss_db,
+            style="danger", icon="🗑️"
+        ).pack(fill=tk.X)
+
+        gap(12)
+
+        # ══ STEP 07 — MATCH UAV IMAGE ══════════════════
+        section_label(
+            p, "07  Match UAV Image",
+            T.WARNING
+        )
+        gap(4)
+
+        c7 = card()
+        f7 = tk.Frame(c7, bg=T.BG_CARD)
+        f7.pack(fill=tk.X, padx=14, pady=12)
+
+        ProfButton(
+            f7, "Select UAV Image",
+            self._on_match_select_uav,
+            style="ghost", icon="📷"
+        ).pack(fill=tk.X, pady=(0, 3))
+
+        self._match_img_lbl = tk.Label(
+            f7, text="No UAV image selected",
+            font=("Consolas", 8),
+            fg=T.TEXT_MUTED, bg=T.BG_CARD,
+            wraplength=270, justify=tk.LEFT
+        )
+        self._match_img_lbl.pack(anchor="w",
+                                  pady=(0, 6))
+
+        ProfButton(
+            f7, "Run Matching",
+            self._on_run_matching,
+            style="purple", icon="⚡"
+        ).pack(fill=tk.X, pady=(0, 6))
+
+        self._match_results = tk.Label(
+            f7, text="No results yet",
+            font=("Consolas", 8),
+            fg=T.TEXT_MUTED, bg=T.BG_CARD,
+            justify=tk.LEFT, wraplength=270
+        )
+        self._match_results.pack(anchor="w")
+
         gap(24)
+
+        # Internal state for DB / match tabs
+        self._db_sat_path: Optional[str] = None
+        self._uav_match_path: Optional[str] = None
+        self._faiss_db: Optional[object] = None
 
     # ── Map Area ──────────────────────────────────────
 
@@ -2028,6 +2176,249 @@ class VNSApp:
         self._log_box.config(state=tk.NORMAL)
         self._log_box.delete("1.0", tk.END)
         self._log_box.config(state=tk.DISABLED)
+
+    # ═════════════════════════════════════════════════
+    # DATABASE HANDLERS  (FAISS + DINOv2)
+    # ═════════════════════════════════════════════════
+
+    def _get_faiss_db(self) -> Optional[object]:
+        if not _FAISS_AVAILABLE:
+            messagebox.showerror(
+                "Import Error",
+                "FAISSDatabase could not be loaded.\n"
+                "Install: pip install faiss-cpu torch torchvision"
+            )
+            return None
+        if self._faiss_db is None:
+            self._faiss_db = FAISSDatabase()
+        return self._faiss_db
+
+    def _on_db_select_image(self):
+        p = filedialog.askopenfilename(
+            title="Select Satellite Image",
+            initialdir="data/satellite/raw",
+            filetypes=[
+                ("Images",
+                 "*.jpg *.jpeg *.png *.tif *.tiff"),
+                ("All", "*.*"),
+            ]
+        )
+        if not p:
+            return
+        self._db_sat_path = p
+        self._db_img_lbl.config(
+            text=f"✓  {Path(p).name}", fg=T.SUCCESS
+        )
+        self._log(f"Satellite image selected: {Path(p).name}", "info")
+
+    def _on_build_faiss_db(self):
+        if not self._db_sat_path:
+            messagebox.showwarning(
+                "No Image", "Select a satellite image first."
+            )
+            return
+        try:
+            lat = float(self._db_lat.get().strip())
+            lon = float(self._db_lon.get().strip())
+            alt = float(self._db_alt.get().strip())
+        except ValueError:
+            messagebox.showerror(
+                "Invalid Input",
+                "Lat / Lon / Alt must be numeric."
+            )
+            return
+
+        db = self._get_faiss_db()
+        if db is None:
+            return
+
+        self._log(
+            f"Building FAISS DB: {Path(self._db_sat_path).name} "
+            f"({lat:.4f}, {lon:.4f})",
+            "info"
+        )
+        self._sys_badge.set("BUILDING DB", "working")
+        self._db_progress.config(
+            text="Building…  0 / ?", fg=T.WARNING
+        )
+
+        def _progress(cur, total):
+            pct = int(cur / total * 100) if total else 0
+            self.root.after(
+                0, self._db_progress.config,
+                {"text": f"Building…  {cur}/{total}  ({pct}%)"}
+            )
+
+        def _run():
+            count = db.build(
+                satellite_image_path=self._db_sat_path,
+                lat=lat, lon=lon, alt=alt,
+                progress_callback=_progress,
+            )
+            self.root.after(0, self._faiss_build_done, count, db)
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _faiss_build_done(self, count: int, db) -> None:
+        stats = db.get_stats()
+        self._db_progress.config(
+            text=f"✓  {count} patches  |  {stats['index_size_mb']} MB",
+            fg=T.SUCCESS
+        )
+        self._db_status.config(
+            text=(
+                f"✓  {stats['total_descriptors']} patches"
+                f"  |  DINOv2 {stats['descriptor_dim']}-dim"
+                f"  |  {stats['unique_images']} image(s)"
+            ),
+            fg=T.SUCCESS
+        )
+        self._log(
+            f"FAISS DB built: {count} patches "
+            f"({stats['descriptor_dim']}-dim, "
+            f"{stats['index_size_mb']} MB)",
+            "success"
+        )
+        self._sys_badge.set("DB READY", "ok")
+
+    def _on_load_faiss_db(self):
+        db = self._get_faiss_db()
+        if db is None:
+            return
+        ok = db.load()
+        if ok:
+            stats = db.get_stats()
+            self._db_status.config(
+                text=(
+                    f"✓  {stats['total_descriptors']} patches"
+                    f"  |  DINOv2 {stats['descriptor_dim']}-dim"
+                    f"  |  {stats['unique_images']} image(s)"
+                ),
+                fg=T.SUCCESS
+            )
+            self._log(
+                f"FAISS DB loaded: {stats['total_descriptors']} descriptors",
+                "success"
+            )
+            self._sys_badge.set("DB LOADED", "ok")
+        else:
+            self._db_status.config(
+                text="Load failed — build the database first",
+                fg=T.WARNING
+            )
+            self._log("FAISS DB load failed", "warning")
+
+    def _on_clear_faiss_db(self):
+        if not messagebox.askyesno(
+            "Clear Database",
+            "Delete the FAISS index and metadata from disk?\n"
+            "This cannot be undone."
+        ):
+            return
+        db = self._get_faiss_db()
+        if db is None:
+            return
+        for f in (db.index_path, db.meta_path):
+            if f.exists():
+                f.unlink()
+        db.metadata = []
+        db._init_index()
+        self._faiss_db = None
+        self._db_status.config(
+            text="Status: cleared", fg=T.WARNING
+        )
+        self._db_progress.config(text="")
+        self._log("FAISS database cleared", "warning")
+        self._sys_badge.set("DB CLEARED", "working")
+
+    # ═════════════════════════════════════════════════
+    # MATCHING HANDLERS
+    # ═════════════════════════════════════════════════
+
+    def _on_match_select_uav(self):
+        p = filedialog.askopenfilename(
+            title="Select UAV Image",
+            initialdir="data/patches/uav",
+            filetypes=[
+                ("Images",
+                 "*.jpg *.jpeg *.png *.tif *.tiff"),
+                ("All", "*.*"),
+            ]
+        )
+        if not p:
+            return
+        self._uav_match_path = p
+        self._match_img_lbl.config(
+            text=f"✓  {Path(p).name}", fg=T.SUCCESS
+        )
+        self._log(f"UAV image selected: {Path(p).name}", "info")
+
+    def _on_run_matching(self):
+        if not self._uav_match_path:
+            messagebox.showwarning(
+                "No Image", "Select a UAV image first."
+            )
+            return
+        db = self._get_faiss_db()
+        if db is None:
+            return
+        if db.index is None or db.index.ntotal == 0:
+            messagebox.showwarning(
+                "Empty Database",
+                "Build or load the database first."
+            )
+            return
+
+        import cv2 as _cv2
+        uav_img = _cv2.imread(self._uav_match_path)
+        if uav_img is None:
+            messagebox.showerror(
+                "Read Error", "Cannot read UAV image."
+            )
+            return
+
+        self._match_results.config(
+            text="Running…", fg=T.WARNING
+        )
+        self._sys_badge.set("MATCHING", "working")
+        self._log("Running DINOv2 + ORB matching…", "info")
+
+        def _run():
+            results = db.query(uav_img, top_k=5, min_confidence=0.0)
+            self.root.after(0, self._match_done, results)
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _match_done(self, results: list) -> None:
+        n_total = len(results)
+        n_verified = sum(1 for r in results if r.get("orb_verified"))
+
+        if not results:
+            self._match_results.config(
+                text="No matches found", fg=T.DANGER
+            )
+            self._sys_badge.set("NO MATCH", "error")
+            self._log("Matching: no results", "error")
+            return
+
+        best = results[0]
+        lines = [
+            f"Stage 1 (DINOv2): {n_total} candidates found",
+            f"Stage 2 (ORB):    {n_verified} verified",
+            f"Best Match: Lat {best['lat']:.6f},"
+            f"  Lon {best['lon']:.6f}",
+            f"Confidence: {best['confidence']*100:.1f}%",
+        ]
+        self._match_results.config(
+            text="\n".join(lines), fg=T.SUCCESS
+        )
+        self._sys_badge.set("MATCHED", "ok")
+        self._log(
+            f"Match: lat={best['lat']:.5f} "
+            f"lon={best['lon']:.5f} "
+            f"conf={best['confidence']*100:.1f}%",
+            "success"
+        )
 
     # ═════════════════════════════════════════════════
     # RUN
