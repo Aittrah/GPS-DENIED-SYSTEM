@@ -96,8 +96,7 @@ class VnsNode(Node):
         if self._mavlink_enabled:
             mavlink_config['enabled'] = self._mavlink_enabled
             self.get_logger().info(
-                "MAVLink enabled; connection string=%s",
-                mavlink_config.get('connection_string', ''),
+                f"MAVLink enabled; connection string={mavlink_config.get('connection_string', '')}"
             )
             self._mavlink = MAVLinkInterface.from_config(mavlink_config)
             self._runtime.attach_mavlink(self._mavlink)
@@ -142,8 +141,7 @@ class VnsNode(Node):
         try:
             await self._mavlink.connect()
             self.get_logger().info(
-                "MAVLink connected on %s",
-                self._mavlink.connection_string,
+                f"MAVLink connected on {self._mavlink.connection_string}"
             )
         except Exception as e:
             self.get_logger().error(f'MAVLink connection failed: {e}')
@@ -369,7 +367,7 @@ class VnsNode(Node):
         summary = ", ".join(
             f"{source_type}={count}" for source_type, count in sorted(source_counts.items())
         )
-        self.get_logger().info("Reference DB source types: %s", summary)
+        self.get_logger().info(f"Reference DB source types: {summary}")
 
         if source_counts.get('synthetic'):
             self.get_logger().warn(
