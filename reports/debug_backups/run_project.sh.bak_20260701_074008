@@ -1,0 +1,311 @@
+#!/usr/bin/env bash
+# =============================================================================
+# run_project.sh — one entry point to run every part of the GPS-DENIED-SYSTEM
+# (VNS) project on this machine. Each subcommand is self-contained.
+#
+#   ./scripts/run_project.sh <command>
+#
+# Commands:
+#   test          Run the full pytest suite (unit + integration).
+#   app           Launch the desktop mission-planner (tkinter GUI, needs a display).
+#   build-db      Rebuild the reference database from the REAL QAU satellite image.
+#   loctest       Vision-only world: gzserver + vns_node, prints live vision fixes.
+#   sim           Full stack headless: Gazebo + PX4 SITL + vns_node.
+#   mission       Upload + fly the QAU waypoint mission (run while `sim` is up).
+#   deny          Toggle GNSS denial on the running sim (HEALTHY <-> DENIED).
+#   dashboard     Build the HTML validation dashboard from the latest sim logs.
+#   clean         Kill any leftover sim processes and free the ports.
+#
+# Typical vision demo:
+#   ./scripts/run_project.sh build-db          # one time, real-imagery DB
+#   ./scripts/run_project.sh loctest           # watch "Localized: ref=..." scroll
+#
+# Typical full-flight demo (two terminals):
+#   Terminal A:  ./scripts/run_project.sh sim
+#   Terminal B:  ./scripts/run_project.sh mission        # wait for "Ready for takeoff!"
+#   Terminal B:  ./scripts/run_project.sh deny off       # GNSS denied
+#   Terminal B:  ./scripts/run_project.sh deny on        # GNSS restored
+# =============================================================================
+set -uo pipefail
+
+# ---- paths -----------------------------------------------------------------
+REPO="/home/hp/GPS-DENIED-SYSTEM"
+PX4="/home/hp/PX4-Autopilot"
+VENV_TEST="$REPO/.venv-test"          # Python 3.10 + pytest + faiss + rasterio
+VENV_RUN="$REPO/.venv-run"            # Python 3.10 + numpy<2 (cv_bridge-safe) + mavsdk
+SATELLITE_PORT="udpin://0.0.0.0:14550"   # GCS link; vns_node owns 14540, so fly on 14550
+ROS_SETUP="/opt/ros/humble/setup.bash"
+
+# ---- ROS + Gazebo + PX4 environment (headless sim) -------------------------
+# NOTE: the interactive shell auto-sources ROS, which breaks pytest (see `test`);
+# the sim, by contrast, NEEDS ROS + PX4 sourced. Both are handled below.
+
+# ROS/PX4 setup files reference variables they never define (e.g. Humble's
+# AMENT_TRACE_SETUP_FILES), which abort this script under `set -u`. Source them
+# with nounset temporarily disabled, then restore whatever mode we were in.
+safe_source() {
+  local file="$1"; shift
+  if [ ! -f "$file" ]; then
+    echo "WARN: setup file not found: $file" >&2
+    return 0
+  fi
+  local had_u=""; case "$-" in *u*) had_u=1 ;; esac
+  set +u
+  # shellcheck disable=SC1090
+  source "$file" "$@"
+  [ -n "$had_u" ] && set -u
+  return 0
+}
+
+die() {
+  echo "ERROR: $*" >&2
+  return 1
+}
+
+have_cmd() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+python_has_module() {
+  local py="$1" module="$2"
+  "$py" -c "import $module" >/dev/null 2>&1
+}
+
+python_has_modules() {
+  local py="$1"; shift
+  local module
+  for module in "$@"; do
+    python_has_module "$py" "$module" || return 1
+  done
+}
+
+pick_python_with_module() {
+  local module="$1"; shift
+  local py
+  for py in "$@"; do
+    [ -x "$py" ] || continue
+    if python_has_module "$py" "$module"; then
+      printf '%s\n' "$py"
+      return 0
+    fi
+  done
+  return 1
+}
+
+pick_python_with_modules() {
+  local modules=() py
+  while [ "${1:-}" != "--" ]; do
+    modules+=("$1")
+    shift
+  done
+  shift
+  for py in "$@"; do
+    [ -n "$py" ] || continue
+    [ -x "$py" ] || continue
+    if python_has_modules "$py" "${modules[@]}"; then
+      printf '%s\n' "$py"
+      return 0
+    fi
+  done
+  return 1
+}
+
+tools_env() {
+  cd "$REPO"
+  TOOLS_PYTHON=$(
+    pick_python_with_modules pytest cv2 yaml numpy sklearn -- \
+      "$VENV_TEST/bin/python3" \
+      /usr/bin/python3 \
+      "$(command -v python3 2>/dev/null)"
+  ) || die \
+    "No Python interpreter with pytest/cv2/yaml/numpy/sklearn was found. Prepare $VENV_TEST or /usr/bin/python3."
+  export TOOLS_PYTHON
+}
+
+require_ros_setup() {
+  [ -f "$ROS_SETUP" ] || die \
+    "ROS Humble setup not found at $ROS_SETUP. Install/source ROS 2 Humble before running '$1'."
+}
+
+require_ros_runtime() {
+  local cmd_name="$1"
+  require_ros_setup "$cmd_name" || return 1
+  export PATH="/usr/bin:$PATH"                       # spawn_entity.py -> system python3
+  safe_source "$ROS_SETUP"
+  have_cmd ros2 || die \
+    "ros2 CLI is not available after sourcing $ROS_SETUP. Verify the ROS 2 Humble installation."
+  [ -f "$REPO/install/setup.bash" ] || die \
+    "Missing $REPO/install/setup.bash. Build the ROS package workspace before running '$cmd_name'."
+  safe_source "$REPO/install/setup.bash"
+  python_has_module /usr/bin/python3 rclpy || die \
+    "/usr/bin/python3 cannot import rclpy after sourcing ROS. Verify the ROS Python packages."
+  python_has_module /usr/bin/python3 cv_bridge || die \
+    "/usr/bin/python3 cannot import cv_bridge after sourcing ROS. Verify cv_bridge and numpy<2."
+}
+
+require_gazebo_runtime() {
+  local cmd_name="$1"
+  have_cmd gzserver || die \
+    "gzserver is not installed or not on PATH. Install Gazebo Classic before running '$cmd_name'."
+}
+
+require_px4_runtime() {
+  local cmd_name="$1"
+  [ -d "$PX4" ] || die "PX4 checkout not found at $PX4. Start '$cmd_name' only after PX4 is installed."
+  [ -f "$PX4/Tools/simulation/gazebo-classic/setup_gazebo.bash" ] || die \
+    "Missing PX4 Gazebo setup script under $PX4. Build PX4 SITL before running '$cmd_name'."
+  [ -x "$PX4/build/px4_sitl_default/bin/px4" ] || die \
+    "Missing PX4 SITL binary at $PX4/build/px4_sitl_default/bin/px4. Build PX4 SITL before running '$cmd_name'."
+}
+
+require_udp_port_listener() {
+  local port="$1" cmd_name="$2"
+  ss -lun 2>/dev/null | grep -q ":$port " || die \
+    "UDP port $port is not active. Start the simulator before running '$cmd_name'."
+}
+
+mission_env() {
+  cd "$REPO"
+  MISSION_PYTHON=$(
+    pick_python_with_module mavsdk \
+      "$VENV_RUN/bin/python3" \
+      /usr/bin/python3 \
+      "$(command -v python3 2>/dev/null)"
+  ) || die \
+    "No Python interpreter with mavsdk installed was found. Install mavsdk into $VENV_RUN or /usr/bin/python3."
+  export MISSION_PYTHON
+}
+
+loctest_env() {
+  require_ros_runtime loctest || return 1
+  require_gazebo_runtime loctest || return 1
+  export VNS_PYTHON=/usr/bin/python3                 # rclpy + cv_bridge + numpy 1.26
+  export GAZEBO_MODEL_DATABASE_URI=""                # don't hang fetching online models
+  export ROS_LOG_DIR="$REPO/ros_logs"
+  export OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 MKL_NUM_THREADS=2 NUMEXPR_NUM_THREADS=2
+  cd "$REPO"
+}
+
+sim_env() {
+  require_ros_runtime sim || return 1
+  require_gazebo_runtime sim || return 1
+  require_px4_runtime sim || return 1
+  # GAZEBO_PLUGIN_PATH (mavlink plugin) + iris meshes + LD_LIBRARY_PATH. The launch
+  # files APPEND to GAZEBO_MODEL_PATH, so these PX4 model paths survive.
+  safe_source "$PX4/Tools/simulation/gazebo-classic/setup_gazebo.bash" \
+    "$PX4" "$PX4/build/px4_sitl_default" >/dev/null 2>&1
+  export VNS_PYTHON=/usr/bin/python3                 # rclpy + cv_bridge + numpy 1.26
+  export GAZEBO_MODEL_DATABASE_URI=""                # don't hang fetching online models
+  export ROS_LOG_DIR="$REPO/ros_logs"
+  # Cap the vision node's math thread pools. Unbounded, ORB + BoVW (BLAS over 1000
+  # clusters) on every frame pins ~10 cores in vns_node and starves gzserver/PX4,
+  # so PX4's lockstep EKF2 never gets sensor data ("ekf2 missing data" forever).
+  # Leaving cores for gzserver+PX4 lets EKF2 converge and the drone arm.
+  export OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 MKL_NUM_THREADS=2 NUMEXPR_NUM_THREADS=2
+  export PATH="$PX4/build/px4_sitl_default/bin:$PATH"
+  cd "$REPO"
+}
+
+# ---- commands --------------------------------------------------------------
+
+cmd_test() {
+  tools_env || return 1
+  echo ">> Unit + integration tests (faiss/rasterio config, ROS plugins disabled)"
+  # The shell auto-sources ROS; ROS's launch_testing pytest plugins crash pytest 9.
+  # Unset PYTHONPATH so the self-contained test venv runs clean.
+  env -u PYTHONPATH "$TOOLS_PYTHON" -m pytest tests/ -q || return 1
+  echo
+  echo ">> rclpy-gated tests (need ROS; disable the two incompatible ROS plugins)"
+  env -u PYTHONPATH "$TOOLS_PYTHON" -m pytest \
+    tests/test_vns_node.py tests/test_capture_reference_images.py \
+    -q -p no:launch_testing -p no:launch_ros || return 1
+}
+
+cmd_app() {
+  tools_env || return 1
+  echo ">> Desktop mission planner (needs an X display; DISPLAY=${DISPLAY:-:0})"
+  env -u PYTHONPATH DISPLAY="${DISPLAY:-:0}" "$TOOLS_PYTHON" main.py || return 1
+}
+
+cmd_build_db() {
+  tools_env || return 1
+  echo ">> 1/3 Clean the raw satellite photo into the Gazebo ground texture"
+  env -u PYTHONPATH "$TOOLS_PYTHON" simulation/scripts/build_satellite_ground_texture.py || return 1
+  echo ">> 2/3 Cut geo-referenced reference tiles from that real texture"
+  env -u PYTHONPATH "$TOOLS_PYTHON" simulation/scripts/build_real_reference_tiles.py || return 1
+  echo ">> 3/3 Build the ORB + BoVW .vnsdb from the real tiles"
+  (
+    cd simulation/scripts && env -u PYTHONPATH "$TOOLS_PYTHON" build_reference_database.py \
+      --input ../database/images_real/database_index.yaml \
+      --output ../database/qau_campus.vnsdb --max-features 1000 --stats
+  ) || return 1
+  echo ">> Done. qau_campus.vnsdb now holds REAL satellite tiles."
+}
+
+cmd_loctest() {
+  loctest_env || return 1
+  echo ">> Vision-only world (flat satellite ground, static nadir camera @240m)."
+  echo ">> Watch for: 'Localized: ref=qau_tile_* conf=.. inliers=..'  (Ctrl-C to stop)"
+  ros2 launch vns localization_test.launch.py headless:=true
+}
+
+cmd_sim() {
+  sim_env || return 1
+  echo ">> Full stack headless: Gazebo + PX4 SITL + gps_gate + vns_node."
+  echo ">> Wait for PX4 '[commander] Ready for takeoff!', then run: $0 mission"
+  ros2 launch vns full_simulation.launch.py headless:=true
+}
+
+cmd_mission() {
+  mission_env || return 1
+  require_udp_port_listener 14550 mission || return 1
+  local alt="${2:-240}" speed="${3:-12}" csv="${4:-data/waypoints/qau_path_waypoints.csv}"
+  echo ">> Uploading + starting mission ($csv) @ ${alt} m / ${speed} m/s on $SATELLITE_PORT"
+  "$MISSION_PYTHON" -u scripts/upload_mission.py \
+    --csv "$csv" --altitude "$alt" --speed "$speed" --connection "$SATELLITE_PORT"
+}
+
+cmd_deny() {
+  require_ros_runtime deny || return 1
+  local state="${2:-off}" data
+  [ "$state" = "off" ] && data=false || data=true
+  echo ">> Setting GPS enabled=$data  (off => GNSS DENIED, watch vns_node log)"
+  ros2 service call /vns/set_gps_enabled std_srvs/srv/SetBool "{data: $data}"
+}
+
+cmd_dashboard() {
+  tools_env || return 1
+  local log manifest out="reports/dashboard"
+  log=$(ls -t logs/ground_truth_*.jsonl 2>/dev/null | head -1)
+  manifest=$(ls -t logs/images/manifest_*.jsonl 2>/dev/null | head -1)
+  [ -z "$log" ] && { echo "No logs/ground_truth_*.jsonl — run the sim first."; return 1; }
+  echo ">> Dashboard from $log + $manifest"
+  env -u PYTHONPATH "$TOOLS_PYTHON" simulation/scripts/generate_visualization_dashboard.py \
+    --log "$log" --manifest "$manifest" --database simulation/database/qau_campus.vnsdb \
+    --output "$out" --max-samples 60 || return 1
+  echo ">> Open $REPO/$out/index.html"
+}
+
+cmd_clean() {
+  echo ">> Killing leftover sim processes and freeing ports"
+  for pat in "ros2 launch vns" gzserver "bin/px4" px4-simulator gps_gate_node \
+             "vns/lib/vns/vns_node" upload_mission mavsdk_server; do
+    pkill -9 -f "$pat" 2>/dev/null || true
+  done
+  sleep 1
+  ss -tuln 2>/dev/null | grep -E ":11345|:14540|:14550" && echo "(ports still busy)" || echo "ports free"
+}
+
+# ---- dispatch --------------------------------------------------------------
+case "${1:-}" in
+  test)      cmd_test ;;
+  app)       cmd_app ;;
+  build-db)  cmd_build_db ;;
+  loctest)   cmd_loctest ;;
+  sim)       cmd_sim ;;
+  mission)   cmd_mission "$@" ;;
+  deny)      cmd_deny "$@" ;;
+  dashboard) cmd_dashboard ;;
+  clean)     cmd_clean ;;
+  *) grep -E '^#( |=)' "$0" | sed 's/^# \{0,1\}//' ; exit 1 ;;
+esac

@@ -48,52 +48,12 @@
       <direction>-0.4 0.3 -0.9</direction>
     </light>
     
-    <!-- Ground plane representing QAU campus grounds -->
-    <model name="qau_ground">
-      <static>true</static>
-      <link name="link">
-        <collision name="collision">
-          <geometry>
-            <plane>
-              <normal>0 0 1</normal>
-              <size>1000 1000</size>
-            </plane>
-          </geometry>
-        </collision>
-        <!-- Base plane visual for terrain beyond the textured campus map -->
-        <visual name="visual">
-          <geometry>
-            <plane>
-              <normal>0 0 1</normal>
-              <size>1000 1000</size>
-            </plane>
-          </geometry>
-          <material>
-            <ambient>0.35 0.45 0.3 1</ambient>
-            <diffuse>0.4 0.5 0.35 1</diffuse>
-          </material>
-        </visual>
-        <!-- QAU campus satellite/reference-map texture (600x600 m, georeferenced
-             mosaic of the VNS reference-database tiles; world origin == DB center).
-             Mapped 1:1 onto a thin box so the downward camera sees terrain that
-             matches the reference tiles. -->
-        <visual name="campus_map">
-          <pose>0 0 0.02 0 0 0</pose>
-          <geometry>
-            <box>
-              <size>600 600 0.04</size>
-            </box>
-          </geometry>
-          <material>
-            <script>
-              <uri>file://materials/scripts</uri>
-              <uri>file://materials/textures</uri>
-              <name>QAUCampus/Ground</name>
-            </script>
-          </material>
-        </visual>
-      </link>
-    </model>
+    <!-- Ground plane representing QAU campus grounds: real satellite-textured,
+         portable model://qau_ground_plane (simulation/models/qau_ground_plane/). -->
+    <include>
+      <uri>model://qau_ground_plane</uri>
+      <pose>0 0 0 0 0 0</pose>
+    </include>
 
     <!-- ============================================ -->
     <!-- QAU CAMPUS LANDMARKS - Distinctive buildings -->

@@ -248,21 +248,24 @@ class VnsNode(Node):
         )
 
     def _on_imu(self, msg: Imu):
-        q = msg.orientation
-        stamp = self._stamp_to_seconds(msg.header.stamp)
-        self._runtime.update_imu(
-            w=q.w,
-            x=q.x,
-            y=q.y,
-            z=q.z,
-            accel_x=msg.linear_acceleration.x,
-            accel_y=msg.linear_acceleration.y,
-            accel_z=msg.linear_acceleration.z,
-            gyro_x=msg.angular_velocity.x,
-            gyro_y=msg.angular_velocity.y,
-            gyro_z=msg.angular_velocity.z,
-            timestamp=stamp,
-        )
+        try:
+            q = msg.orientation
+            stamp = self._stamp_to_seconds(msg.header.stamp)
+            self._runtime.update_imu(
+                w=q.w,
+                x=q.x,
+                y=q.y,
+                z=q.z,
+                accel_x=msg.linear_acceleration.x,
+                accel_y=msg.linear_acceleration.y,
+                accel_z=msg.linear_acceleration.z,
+                gyro_x=msg.angular_velocity.x,
+                gyro_y=msg.angular_velocity.y,
+                gyro_z=msg.angular_velocity.z,
+                timestamp=stamp,
+            )
+        except Exception as e:
+            self.get_logger().error(f'IMU callback failed: {e}')
 
     def _on_ground_truth(self, msg: Odometry):
         q = msg.pose.pose.orientation

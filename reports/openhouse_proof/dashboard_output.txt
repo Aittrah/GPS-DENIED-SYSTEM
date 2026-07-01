@@ -1,0 +1,8 @@
+==> Generating dashboard
+/home/hp/snap/codex/34/.local/lib/python3.12/site-packages/joblib/_multiprocessing_helpers.py:44: UserWarning: [Errno 13] Permission denied.  joblib will operate in serial mode
+  warnings.warn("%s.  joblib will operate in serial mode" % (e,))
+Skipping malformed JSONL row /home/hp/GPS-DENIED-SYSTEM/logs/ground_truth_1782871089.jsonl:42140 (Unterminated string starting at: line 1 column 590 (char 589))
+Dashboard written to: reports/dashboard/index.html
+Overlay images generated: 0
+Samples skipped: 60
+Dashboard generated at /home/hp/GPS-DENIED-SYSTEM/reports/dashboard/index.html

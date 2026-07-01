@@ -38,7 +38,7 @@ Create stub spec files for every functional requirement of the Visual Navigation
 | FR-13 | Dataset Preparation | The system shall provide tooling to build and validate the ORB feature reference database from captured or synthetic imagery. | `simulation/scripts/build_reference_database.py` |
 | FR-14 | Model Training | The system shall support training or fine-tuning learned components (e.g. confidence estimators) on the QAU campus dataset using python3. | `src/vns/core/` |
 | FR-15 | Model Evaluation | The system shall evaluate navigation accuracy against ground truth and generate accuracy reports including position error statistics and match confidence histograms. | `simulation/scripts/generate_accuracy_report.py`, `src/vns/validation/` |
-| FR-16 | Visualisation | The system shall visualise the navigation state, matched reference images, feature correspondences, and position error in real-time or post-hoc. | `simulation/scripts/visual_navigation.py`, `src/vns/utils/` |
+| FR-16 | Visualisation | The system shall visualise the navigation state, matched reference images, feature correspondences, and position error in real-time or post-hoc. | `src/vns/validation/`, `src/vns/core/vns_node.py`, `src/vns/utils/` |
 | FR-17 | Error Handling | The system shall detect and gracefully handle errors including lost visual lock, sensor dropouts, database misses, and navigation divergence, with configurable failsafe behaviours. | `src/vns/core/`, `src/vns/interfaces/` |
 
 ---

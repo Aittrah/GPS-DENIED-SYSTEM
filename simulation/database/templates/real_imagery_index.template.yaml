@@ -1,0 +1,33 @@
+database:
+  name: "Imported Real Imagery Reference Database"
+  version: "1.0.0"
+  location: "QAU Campus, Islamabad, Pakistan"
+  # Optional. If omitted, import_real_reference_imagery.py computes center/bounds
+  # from the per-image metadata below.
+  center:
+    latitude: 33.7470
+    longitude: 73.1370
+    altitude: 550.0
+  bounds:
+    min_latitude: 33.7400
+    max_latitude: 33.7550
+    min_longitude: 73.1300
+    max_longitude: 73.1450
+
+images:
+  - id: "qau_admin_real_01"
+    # filename is resolved relative to --image-root, or relative to this manifest
+    filename: "qau_admin_real_01.jpg"
+    latitude: 33.7470
+    longitude: 73.1370
+    altitude: 550.0
+    heading: 0.0
+    timestamp: "2026-06-30T12:00:00Z"
+
+  - id: "qau_admin_real_02"
+    filename: "qau_admin_real_02.jpg"
+    latitude: 33.7470
+    longitude: 73.1370
+    altitude: 550.0
+    heading: 90.0
+    timestamp: "2026-06-30T12:00:03Z"

@@ -10,13 +10,12 @@ IIT Quaid-i-Azam University Islamabad
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 import threading
-import subprocess
-import os
 import sys
 import json
 import csv
 import math
 import heapq
+import logging
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -24,13 +23,21 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 # Ensure project root is on sys.path regardless of how the app is launched
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
+
+from src.vns.app.google_earth import (
+    DEFAULT_FOCUS_KML_NAME,
+    GoogleEarthLaunchResult,
+    open_google_earth_at_location,
+)
+
+logger = logging.getLogger("vns.app.desktop")
 
 try:
     from src.vns.database.reference_database import ReferenceDatabase
@@ -506,15 +513,11 @@ def section_label(parent, text, color=T.ACCENT):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class VNSApp:
-
-    GE_PATHS = [
-        r"C:\Program Files\Google\Google Earth Pro\client\googleearth.exe",
-        r"C:\Program Files (x86)\Google\Google Earth Pro\client\googleearth.exe",
-        os.path.join(
-            os.environ.get("LOCALAPPDATA", ""),
-            r"Google\Google Earth Pro\client\googleearth.exe"
-        ),
-    ]
+    KML_DIR = _PROJECT_ROOT / "data" / "kml"
+    GENERATED_KML_NAMES = {
+        "fly_to.kml",
+        DEFAULT_FOCUS_KML_NAME,
+    }
 
     def __init__(self):
         self.root = tk.Tk()
@@ -1344,31 +1347,67 @@ class VNSApp:
 
     # ── Plot / Clear points ───────────────────────────
 
-    def _on_plot_points(self):
+    def _get_mission_coordinates(self) -> tuple[float, float, float, float]:
         try:
             s_lat = float(self._e_slat.get().strip())
             s_lon = float(self._e_slon.get().strip())
             e_lat = float(self._e_elat.get().strip())
             e_lon = float(self._e_elon.get().strip())
-        except ValueError:
-            self._log(
-                "Invalid coordinates — use decimal "
-                "format e.g. 33.7470",
-                "error"
-            )
-            return
+        except ValueError as exc:
+            raise ValueError(
+                "Enter valid start and end coordinates first."
+            ) from exc
 
-        if not (-90 <= s_lat <= 90
-                and -90 <= e_lat <= 90):
-            self._log(
-                "Latitude must be −90 to 90", "error"
-            )
-            return
-        if not (-180 <= s_lon <= 180
-                and -180 <= e_lon <= 180):
-            self._log(
-                "Longitude must be −180 to 180", "error"
-            )
+        if not (-90 <= s_lat <= 90 and -90 <= e_lat <= 90):
+            raise ValueError("Latitude must be -90 to 90.")
+        if not (-180 <= s_lon <= 180 and -180 <= e_lon <= 180):
+            raise ValueError("Longitude must be -180 to 180.")
+
+        return s_lat, s_lon, e_lat, e_lon
+
+    @staticmethod
+    def _display_repo_path(path: Path) -> str:
+        try:
+            return str(path.relative_to(_PROJECT_ROOT))
+        except ValueError:
+            return str(path)
+
+    def _show_google_earth_launch_failure(
+        self,
+        center_lat: float,
+        center_lon: float,
+        launch_result: GoogleEarthLaunchResult,
+    ) -> None:
+        kml_path = self._display_repo_path(launch_result.kml_path)
+        attempted = "\n".join(
+            f"  {command}" for command in launch_result.attempted_commands
+        ) or "  (none)"
+        searched = "\n".join(
+            f"  {command}" for command in launch_result.searched_executables
+        ) or "  (none)"
+
+        messagebox.showinfo(
+            "Google Earth Pro",
+            "Could not launch automatically.\n\n"
+            "Target latitude/longitude:\n"
+            f"  {center_lat:.5f}, {center_lon:.5f}\n\n"
+            "Generated KML path:\n"
+            f"  {kml_path}\n\n"
+            "Attempted launch commands:\n"
+            f"{attempted}\n\n"
+            "Executable search order:\n"
+            f"{searched}\n\n"
+            "Reason:\n"
+            f"  {launch_result.error_reason}\n\n"
+            "Open Google Earth Pro manually, draw the polygon, "
+            "and save the KML to data/kml/."
+        )
+
+    def _on_plot_points(self):
+        try:
+            s_lat, s_lon, e_lat, e_lon = self._get_mission_coordinates()
+        except ValueError as exc:
+            self._log(str(exc), "error")
             return
 
         self._start = (s_lat, s_lon)
@@ -1455,14 +1494,12 @@ class VNSApp:
 
     def _on_open_ge(self):
         try:
-            s_lat = float(self._e_slat.get().strip())
-            s_lon = float(self._e_slon.get().strip())
-            e_lat = float(self._e_elat.get().strip())
-            e_lon = float(self._e_elon.get().strip())
-        except ValueError:
+            s_lat, s_lon, e_lat, e_lon = self._get_mission_coordinates()
+        except ValueError as exc:
+            self._log(str(exc), "warning")
             messagebox.showwarning(
                 "Coordinates Required",
-                "Enter valid start and end coordinates first."
+                str(exc)
             )
             return
 
@@ -1473,74 +1510,40 @@ class VNSApp:
             abs(e_lon - s_lon)
         )
         alt   = max(800, int(diff * 111320 * 2.5))
+        logger.info(
+            "Opening Google Earth at mission center lat=%.5f lon=%.5f",
+            c_lat,
+            c_lon,
+        )
+        launch_result = open_google_earth_at_location(
+            c_lat,
+            c_lon,
+            start=(s_lat, s_lon),
+            goal=(e_lat, e_lon),
+            output_path=self.KML_DIR / DEFAULT_FOCUS_KML_NAME,
+            lookat_range_m=alt,
+        )
 
-        kml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>VNS Mission Area</name>
-    <LookAt>
-      <longitude>{c_lon}</longitude>
-      <latitude>{c_lat}</latitude>
-      <altitude>0</altitude>
-      <heading>0</heading>
-      <tilt>0</tilt>
-      <range>{alt}</range>
-    </LookAt>
-    <Placemark>
-      <name>Start Point</name>
-      <Style><IconStyle><color>ff00ff00</color>
-      </IconStyle></Style>
-      <Point>
-        <coordinates>{s_lon},{s_lat},0</coordinates>
-      </Point>
-    </Placemark>
-    <Placemark>
-      <name>End Point</name>
-      <Style><IconStyle><color>ff0000ff</color>
-      </IconStyle></Style>
-      <Point>
-        <coordinates>{e_lon},{e_lat},0</coordinates>
-      </Point>
-    </Placemark>
-  </Document>
-</kml>"""
-
-        fly = Path("data/kml/fly_to.kml")
-        fly.parent.mkdir(parents=True, exist_ok=True)
-        fly.write_text(kml)
-
-        ge = None
-        for p in self.GE_PATHS:
-            if Path(p).exists():
-                ge = p
-                break
-
-        if ge:
-            subprocess.Popen(
-                [ge, str(fly.absolute())]
-            )
+        if launch_result.opened:
             self._log(
                 f"Google Earth Pro opened at "
                 f"({c_lat:.4f}, {c_lon:.4f})",
                 "success"
             )
+            logger.info(
+                "Google Earth launch succeeded via %s",
+                launch_result.executable_path or launch_result.launch_method,
+            )
         else:
-            try:
-                os.startfile(str(fly.absolute()))
-                self._log(
-                    "Opened in default KML app",
-                    "success"
-                )
-            except Exception:
-                messagebox.showinfo(
-                    "Google Earth Pro",
-                    "Could not launch automatically.\n\n"
-                    "Open Google Earth Pro manually and\n"
-                    f"navigate to:\n"
-                    f"  {c_lat:.5f}, {c_lon:.5f}\n\n"
-                    "Then draw polygon and save as KML\n"
-                    f"to:  data\\kml\\"
-                )
+            self._log(
+                f"Google Earth launch failed: {launch_result.error_reason}",
+                "error",
+            )
+            self._show_google_earth_launch_failure(
+                c_lat,
+                c_lon,
+                launch_result,
+            )
 
         self._log(
             "Draw polygon → Right-click → "
@@ -1552,7 +1555,7 @@ class VNSApp:
     # ── KML watcher ───────────────────────────────────
 
     def _start_kml_watcher(self):
-        kml_dir = Path("data/kml")
+        kml_dir = self.KML_DIR
         kml_dir.mkdir(parents=True, exist_ok=True)
 
         def watch():
@@ -1560,7 +1563,7 @@ class VNSApp:
                 if self._watch_var.get():
                     files = [
                         f for f in kml_dir.glob("*.kml")
-                        if f.name != "fly_to.kml"
+                        if f.name not in self.GENERATED_KML_NAMES
                     ]
                     if files:
                         newest = max(
@@ -1583,7 +1586,7 @@ class VNSApp:
     def _on_browse_kml(self):
         p = filedialog.askopenfilename(
             title="Select KML File",
-            initialdir="data/kml",
+            initialdir=str(self.KML_DIR),
             filetypes=[
                 ("KML", "*.kml"),
                 ("All", "*.*")
@@ -1610,10 +1613,10 @@ class VNSApp:
 
         self._polygon = poly
 
-        Path("data/kml").mkdir(
+        self.KML_DIR.mkdir(
             parents=True, exist_ok=True
         )
-        with open("data/kml/polygon.json", "w") as f:
+        with open(self.KML_DIR / "polygon.json", "w") as f:
             json.dump(asdict(poly), f, indent=2)
 
         self._kml_info.config(
@@ -2436,5 +2439,11 @@ class VNSApp:
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
     app = VNSApp()
     app.run()

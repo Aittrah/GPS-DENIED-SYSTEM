@@ -14,6 +14,7 @@ Current project status:
 * Tests: 68/68 passing.
 * Phase 2 is active.
 * VNS vision pipeline, reference database, runtime orchestration, MAVLink interface, config system, CLI, simulation model/worlds, launch files, CI, and Claude Code plugin are already implemented.
+* The canonical runtime is the packaged path `src/vns/core/vns_node.py` → `VnsRuntime` → `VisualLocalizer`; the legacy `simulation/scripts/visual_navigation.py` was removed (B-BOVW, B-DUAL resolved). See `docs/runtime_consolidation.md`.
 * Bug B3 altitude mismatch has already been solved.
 * Current target bug is B1: `iris_downward_cam` camera topic is hardcoded and cannot be remapped via launch args.
 

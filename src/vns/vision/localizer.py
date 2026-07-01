@@ -90,7 +90,12 @@ class VisualLocalizer:
         self._patch_generator = PatchGenerator(patch_size=self._patch_size)
         self._patch_origin = SimpleNamespace(north=0.0, east=0.0, down=0.0)
         self._patched_reference_entries: Dict[str, DatabaseEntry | None] = {}
-        self._retrieval = RetrievalIndex.from_config(retrieval_cfg, database)
+        db_cfg = config.get("database", {})
+        self._retrieval = RetrievalIndex.from_config(
+            retrieval_cfg,
+            database,
+            query_radius_deg=db_cfg.get("query_radius_deg", 0.001),
+        )
         self._verifier = GeometricVerifier(
             ratio_test_threshold=match_cfg.get("ratio_test_threshold", 0.75),
             min_matches=match_cfg.get("min_matches", 10),
@@ -113,6 +118,8 @@ class VisualLocalizer:
         frame: np.ndarray,
         altitude: float,
         heading_deg: float,
+        *,
+        prior: Optional[tuple[float, float]] = None,
     ) -> LocalizationResult:
         """Run the full localization pipeline on a camera frame.
 
@@ -120,6 +127,9 @@ class VisualLocalizer:
             frame: Raw camera image (BGR or grayscale).
             altitude: Drone altitude in metres MSL.
             heading_deg: Drone heading in degrees (clockwise from north).
+            prior: Optional trustworthy ``(lat, lon)`` position prior used to
+                geo-gate BoVW coarse retrieval. ``None`` (the default) leaves
+                retrieval purely appearance-based, unchanged for the FLANN path.
 
         Returns:
             A :class:`LocalizationResult` — always returned, never raises.
@@ -141,7 +151,7 @@ class VisualLocalizer:
         logger.debug("Extracted %d features", len(kp))
 
         # 3 — Coarse retrieval
-        candidates = self._retrieval.query(des, top_k=self._top_k)
+        candidates = self._retrieval.query(des, top_k=self._top_k, prior=prior)
         if not candidates:
             return self._fail("no_retrieval_candidates", ts)
         logger.debug(

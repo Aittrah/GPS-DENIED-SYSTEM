@@ -1,6 +1,4 @@
 """Unit tests for FAISSDatabase (FR-9). DINOv2 is mocked to avoid 300MB download."""
-import pickle
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -8,9 +6,12 @@ import cv2
 import numpy as np
 import pytest
 
+from src.vns.database import faiss_database as faiss_database_module
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 DESCRIPTOR_DIM = 384
+FAISS_AVAILABLE = getattr(faiss_database_module, "_FAISS_AVAILABLE", False)
 
 
 def _random_descriptors(n: int) -> np.ndarray:
@@ -66,12 +67,20 @@ def db_with_image(tmp_path):
 
 class TestFAISSDatabase:
 
+    @pytest.mark.skipif(
+        not FAISS_AVAILABLE,
+        reason="faiss-cpu is not installed; FAISS index tests require the optional dependency.",
+    )
     def test_build_creates_index(self, db_with_image):
         db, img_path, _ = db_with_image
         count = db.build(img_path, lat=33.7470, lon=73.1370, alt=550.0)
         assert count > 0
         assert db.index.ntotal > 0
 
+    @pytest.mark.skipif(
+        not FAISS_AVAILABLE,
+        reason="faiss-cpu is not installed; FAISS persistence tests require the optional dependency.",
+    )
     def test_save_and_load(self, db_with_image):
         db, img_path, tmp_path = db_with_image
         db.build(img_path, lat=33.7470, lon=73.1370, alt=550.0)
@@ -91,6 +100,10 @@ class TestFAISSDatabase:
         assert db2.index.ntotal == stats_before["total_descriptors"]
         assert len(db2.metadata) == len(db.metadata)
 
+    @pytest.mark.skipif(
+        not FAISS_AVAILABLE,
+        reason="faiss-cpu is not installed; FAISS query tests require the optional dependency.",
+    )
     def test_query_returns_results(self, db_with_image):
         db, img_path, _ = db_with_image
         db.build(img_path, lat=33.7470, lon=73.1370, alt=550.0)
@@ -101,6 +114,10 @@ class TestFAISSDatabase:
         results = db.query(uav_img, top_k=5, min_confidence=0.0)
         assert isinstance(results, list)
 
+    @pytest.mark.skipif(
+        not FAISS_AVAILABLE,
+        reason="faiss-cpu is not installed; FAISS query tests require the optional dependency.",
+    )
     def test_confidence_range(self, db_with_image):
         db, img_path, _ = db_with_image
         db.build(img_path, lat=33.7470, lon=73.1370, alt=550.0)

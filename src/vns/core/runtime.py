@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import time
 from dataclasses import dataclass, replace
@@ -19,6 +20,9 @@ from vns.interfaces.mavlink_interface import MAVLinkInterface
 from vns.utils.coordinates import geodetic_to_enu
 from vns.vision.localizer import VisualLocalizer
 from vns.vision.types import LocalizationResult
+
+_LOGGER = logging.getLogger(__name__)
+_DEAD_RECKONING_WARNING_THROTTLE_SECONDS = 5.0
 
 
 @dataclass
@@ -82,8 +86,17 @@ class VnsRuntime:
                 self._config_model.navigation.position_continuity_threshold
             ),
         )
-        self._dead_reckoning = DeadReckoning()
+        dr_cfg = self._config_model.dead_reckoning
+        self._dead_reckoning = DeadReckoning(
+            gyro_bias_rad_s=dr_cfg.gyro_bias_rad_s,
+            accelerometer_bias_m_s2=dr_cfg.accelerometer_bias_m_s2,
+            max_bridge_duration_seconds=dr_cfg.max_bridge_duration_seconds,
+            confidence_decay_per_second=dr_cfg.confidence_decay_per_second,
+            max_dt_seconds=dr_cfg.max_dt_seconds,
+            timestamp_reset_threshold_seconds=dr_cfg.timestamp_reset_threshold_seconds,
+        )
         self._dead_reckoning_ready = False
+        self._dr_warning_last_logged: dict[str, float] = {}
 
         self._last_gps: tuple[float, float, float] | None = None
         self._last_altitude = self._config_model.geo_reference.origin_altitude
@@ -210,7 +223,7 @@ class VnsRuntime:
     ) -> None:
         self.update_heading_from_quaternion(w=w, x=x, y=y, z=z)
         sample_time = time.time() if timestamp is None else timestamp
-        self._dead_reckoning.update(
+        estimate = self._dead_reckoning.update(
             IMUSample(
                 accel_x=accel_x,
                 accel_y=accel_y,
@@ -220,6 +233,30 @@ class VnsRuntime:
                 gyro_z=gyro_z,
                 timestamp=sample_time,
             )
+        )
+        self._maybe_log_dead_reckoning_event(self._dead_reckoning.last_update_outcome)
+        self._dead_reckoning_ready = (
+            self._dead_reckoning.is_bridge_valid(current_time=sample_time)
+            and estimate.confidence > 0.0
+        )
+
+    def _maybe_log_dead_reckoning_event(self, outcome: str) -> None:
+        if outcome not in ("duplicate", "stale", "reset", "clamped"):
+            return
+        now = time.time()
+        last_logged = self._dr_warning_last_logged.get(outcome, 0.0)
+        if now - last_logged < _DEAD_RECKONING_WARNING_THROTTLE_SECONDS:
+            return
+        self._dr_warning_last_logged[outcome] = now
+        _LOGGER.warning(
+            "dead_reckoning IMU timestamp %s (duplicate=%d stale=%d reset=%d "
+            "clamped=%d last_timestamp=%s)",
+            outcome,
+            self._dead_reckoning.duplicate_sample_count,
+            self._dead_reckoning.stale_sample_count,
+            self._dead_reckoning.timestamp_reset_count,
+            self._dead_reckoning.clamped_dt_count,
+            self._dead_reckoning.last_timestamp,
         )
 
     def update_ground_truth_altitude(self, local_up_m: float) -> None:
@@ -282,6 +319,7 @@ class VnsRuntime:
             frame,
             altitude=self._last_altitude,
             heading_deg=self._last_heading_deg,
+            prior=self._current_position_prior(),
         )
         self._last_localization = localization
 
@@ -298,6 +336,23 @@ class VnsRuntime:
         self._coverage_gap_detected = False
         self._last_localization_reason = localization.reason
         return self._finalize_frame_result(localization, ts)
+
+    def _current_position_prior(self) -> tuple[float, float] | None:
+        """Trustworthy ``(lat, lon)`` prior for geo-gating coarse retrieval.
+
+        Mirrors the legacy script's prior selection: a live (non-denied) GPS fix
+        takes precedence, then the most recent fused estimate. The configured
+        geo-origin is never treated as a real prior, so the gate is skipped until
+        a trustworthy position exists.
+        """
+        if (
+            self._gnss_monitor.state != GnssState.DENIED
+            and self._last_gps is not None
+        ):
+            return (self._last_gps[0], self._last_gps[1])
+        if self._last_blended_pose is not None:
+            return (self._last_blended_pose[0], self._last_blended_pose[1])
+        return None
 
     def get_diagnostics(self) -> VnsDiagnostics:
         db_loaded = self._database is not None
@@ -326,6 +381,18 @@ class VnsRuntime:
                 details={
                     "coverage_gap_detected": self._coverage_gap_detected,
                     "last_reason": self._last_localization_reason,
+                },
+            ),
+            SubsystemDiagnostic(
+                name="dead_reckoning",
+                healthy=self._dead_reckoning_ready,
+                state="READY" if self._dead_reckoning_ready else "NOT_READY",
+                details={
+                    "duplicate_sample_count": self._dead_reckoning.duplicate_sample_count,
+                    "stale_sample_count": self._dead_reckoning.stale_sample_count,
+                    "timestamp_reset_count": self._dead_reckoning.timestamp_reset_count,
+                    "clamped_dt_count": self._dead_reckoning.clamped_dt_count,
+                    "last_timestamp": self._dead_reckoning.last_timestamp,
                 },
             ),
         ]
@@ -375,20 +442,27 @@ class VnsRuntime:
         localization: LocalizationResult,
         timestamp: float,
     ) -> FrameProcessingResult:
+        dr_estimate = self._dead_reckoning.get_estimate(current_time=timestamp)
+        dr_ready = (
+            self._dead_reckoning.is_bridge_valid(current_time=timestamp)
+            and dr_estimate.confidence > 0.0
+        )
         blended_pose, nav_mode = self._blender.blend(
             self._last_gps,
             localization.pose_geodetic if localization.success else None,
             self._gnss_monitor.state,
             timestamp,
             dead_reckoning=self._dead_reckoning,
-            dead_reckoning_estimate=self._dead_reckoning.get_estimate(),
-            dead_reckoning_ready=self._dead_reckoning_ready,
+            dead_reckoning_estimate=dr_estimate,
+            dead_reckoning_ready=dr_ready,
             visual_pose_ned=localization.pose_ned if localization.success else None,
             visual_confidence=localization.confidence if localization.success else None,
             geo_origin=self.geo_origin,
         )
-        if nav_mode == "VISION":
-            self._dead_reckoning_ready = True
+        self._dead_reckoning_ready = (
+            self._dead_reckoning.is_bridge_valid(current_time=timestamp)
+            and self._dead_reckoning.get_estimate(current_time=timestamp).confidence > 0.0
+        )
         self._last_navigation_mode = nav_mode
         result_pose = None if nav_mode == "FAILSAFE" else blended_pose
         self._last_blended_pose = result_pose
@@ -429,5 +503,11 @@ class VnsRuntime:
             confidence=max(estimate.confidence, confidence),
             timestamp=time.time() if timestamp is None else timestamp,
         )
-        self._dead_reckoning.reset(anchored_state)
-        self._dead_reckoning_ready = True
+        self._dead_reckoning.correct(anchored_state)
+        self._dead_reckoning_ready = (
+            self._dead_reckoning.is_bridge_valid(current_time=anchored_state.timestamp)
+            and self._dead_reckoning.get_estimate(
+                current_time=anchored_state.timestamp
+            ).confidence
+            > 0.0
+        )

@@ -46,6 +46,7 @@ try:
         ReferenceDatabase as SafeReferenceDatabase,
     )
     from vns.utils.paths import relativize_to_base, resolve_from_base
+    from vns.validation.frame_quality import DEFAULT_THRESHOLDS as DEFAULT_QUALITY_THRESHOLDS
     from vns.vision.bovw_retrieval import BoVWIndex, compute_bovw_histogram
 except ImportError:
     print("Error: scikit-learn not installed. Run: pip3 install scikit-learn")
@@ -252,10 +253,33 @@ def build_database(
             
             db.add_entry(entry)
             print(f"- {entry.feature_count} features")
-            
+            if entry.feature_count < DEFAULT_QUALITY_THRESHOLDS.min_orb_keypoints:
+                logger.warning(
+                    "%s: only %d ORB features (< %d) -- likely an under-textured "
+                    "or blank source frame; built into the database anyway, but "
+                    "this entry is unlikely to produce reliable geometric "
+                    "matches at query time.",
+                    entry.id,
+                    entry.feature_count,
+                    DEFAULT_QUALITY_THRESHOLDS.min_orb_keypoints,
+                )
+
         except Exception as e:
             print(f"- ERROR: {e}")
-    
+
+    low_feature_count = sum(
+        1
+        for e in db.entries.values()
+        if e.feature_count < DEFAULT_QUALITY_THRESHOLDS.min_orb_keypoints
+    )
+    if low_feature_count:
+        logger.warning(
+            "%d of %d entries have fewer than %d ORB features.",
+            low_feature_count,
+            db.entry_count,
+            DEFAULT_QUALITY_THRESHOLDS.min_orb_keypoints,
+        )
+
     return db
 
 

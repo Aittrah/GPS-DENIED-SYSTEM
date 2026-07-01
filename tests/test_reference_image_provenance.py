@@ -81,12 +81,15 @@ def test_committed_synthetic_index_is_labeled() -> None:
     assert index_document["database"]["source_type"] == "synthetic"
 
 
-def test_committed_synthetic_database_entries_are_labeled() -> None:
+def test_committed_database_entries_are_labeled_real_satellite() -> None:
+    # The committed qau_campus.vnsdb was migrated from synthetic building crops to
+    # REAL satellite tiles cut from qau_ground_plane's texture (build_real_reference_tiles.py),
+    # so the live Gazebo world and the DB share the same imagery (project task P4).
     db_path = REPO_ROOT / "simulation" / "database" / "qau_campus.vnsdb"
     db = ReferenceDatabase.load(str(db_path))
 
     assert db.entries
     assert all(
-        entry.metadata.get("source_type") == "synthetic"
+        entry.metadata.get("source_type") == "real_satellite"
         for entry in db.entries.values()
     )

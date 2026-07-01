@@ -29,6 +29,7 @@ if _REPO_SRC.exists() and str(_REPO_SRC) not in sys.path:
 
 from vns.utils.coordinates import enu_to_geodetic
 from vns.utils.ros_env import check_cv_bridge_compatibility
+from vns.validation.frame_quality import FrameQualityReport, assess_frame_quality
 
 
 @dataclass(frozen=True)
@@ -68,13 +69,18 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _resolve_cli_path(path_value: str, *, script_dir: Path) -> Path:
+def _resolve_cli_path(
+    path_value: str,
+    *,
+    script_dir: Path,
+    default_value: str | None = None,
+) -> Path:
     candidate = Path(path_value)
     if candidate.is_absolute():
         return candidate.resolve()
-    if candidate.exists():
-        return candidate.resolve()
-    return (script_dir / candidate).resolve()
+    if default_value is not None and path_value == default_value:
+        return (script_dir / candidate).resolve()
+    return candidate.resolve()
 
 
 def _import_ros_types() -> tuple[object, object, object, object]:
@@ -184,15 +190,47 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Allow overwriting existing captured images in the output directory",
     )
+    parser.add_argument(
+        "--allow-low-quality",
+        action="store_true",
+        help=(
+            "Capture frames even if they fail the image-quality check (low "
+            "ORB feature count, near-uniform color, dominant green, etc.). "
+            "For debugging the capture pipeline only -- do not use when "
+            "building the production reference database."
+        ),
+    )
+    parser.add_argument(
+        "--debug-save-first-frame",
+        action="store_true",
+        help=(
+            "Unconditionally save the first received camera frame to "
+            "<output>/debug_first_frame.png with its quality metrics, "
+            "regardless of capture pass/fail, then continue normally."
+        ),
+    )
     args = parser.parse_args(argv)
 
     script_dir = Path(__file__).resolve().parent
-    config_path = _resolve_cli_path(args.config, script_dir=script_dir)
+    config_default = parser.get_default("config")
+    simulation_config_default = parser.get_default("simulation_config")
+    output_default = parser.get_default("output")
+
+    config_path = _resolve_cli_path(
+        args.config,
+        script_dir=script_dir,
+        default_value=config_default,
+    )
     simulation_config_path = _resolve_cli_path(
         args.simulation_config,
         script_dir=script_dir,
+        default_value=simulation_config_default,
     )
-    output_dir = _resolve_cli_path(args.output, script_dir=script_dir)
+    output_dir = _resolve_cli_path(
+        args.output,
+        script_dir=script_dir,
+        default_value=output_default,
+    )
 
     print(f"Reference config: {config_path}")
     print(f"Simulation config: {simulation_config_path}")
@@ -262,6 +300,9 @@ def main(argv: list[str] | None = None) -> int:
         def ready(self) -> bool:
             return self._latest_image is not None and self._latest_ground_truth is not None
 
+        def latest_image_copy(self):
+            return None if self._latest_image is None else self._latest_image.copy()
+
         def current_status(self, target: ReferencePoint) -> tuple[float, float] | None:
             if self._latest_ground_truth is None:
                 return None
@@ -270,12 +311,21 @@ def main(argv: list[str] | None = None) -> int:
                 _heading_error_deg(target.heading, self._latest_ground_truth.heading_deg),
             )
 
-        def capture(self, target: ReferencePoint) -> CapturedImage:
+        def capture(self, target: ReferencePoint) -> tuple[CapturedImage | None, FrameQualityReport]:
+            """Attempt to capture ``target``. Returns ``(None, report)`` with a
+            failing ``report`` if the frame is rejected for quality (and
+            ``--allow-low-quality`` was not passed) -- the caller is
+            responsible for not appending a ``None`` result and for not
+            writing a database index from an all-rejected run."""
             if self._latest_image is None or self._latest_ground_truth is None:
                 raise RuntimeError("Latest camera frame or ground truth is not ready.")
 
-            filepath = output_dir / f"{target.id}.jpg"
             frame = self._latest_image.copy()
+            quality = assess_frame_quality(frame)
+            if not quality.passed and not args.allow_low_quality:
+                return None, quality
+
+            filepath = output_dir / f"{target.id}.jpg"
             if not cv2.imwrite(str(filepath), frame):
                 raise RuntimeError(f"Failed to write {filepath}")
 
@@ -306,8 +356,12 @@ def main(argv: list[str] | None = None) -> int:
                     "capture_heading_deg": ground_truth.heading_deg,
                     "position_error_m": round(horizontal_error, 3),
                     "heading_error_deg": round(heading_error, 3),
+                    "quality_grayscale_std": round(quality.grayscale_std, 2),
+                    "quality_orb_keypoints": quality.orb_keypoint_count,
+                    "quality_green_ratio": round(quality.green_ratio, 3),
+                    "quality_brightness_mean": round(quality.brightness_mean, 2),
                 },
-            )
+            ), quality
 
         def _on_image(self, msg) -> None:
             self._latest_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
@@ -382,6 +436,16 @@ def main(argv: list[str] | None = None) -> int:
                     return 1
                 rclpy.spin_once(node, timeout_sec=0.2)
 
+            if args.debug_save_first_frame:
+                debug_frame = node.latest_image_copy()
+                debug_path = output_dir / "debug_first_frame.png"
+                debug_quality = assess_frame_quality(debug_frame)
+                cv2.imwrite(str(debug_path), debug_frame)
+                print(f"Debug frame saved to: {debug_path}")
+                print(f"Debug frame quality: {debug_quality}")
+
+            rejected_count = 0
+
             for index, point in enumerate(reference_points, start=1):
                 print(
                     f"[{index}/{len(reference_points)}] target={point.id} "
@@ -409,9 +473,13 @@ def main(argv: list[str] | None = None) -> int:
                         continue
 
                     if args.auto_capture:
-                        captured = node.capture(point)
+                        captured, quality = node.capture(point)
+                        if captured is None:
+                            rejected_count += 1
+                            print(f"  REJECTED {point.id}: {quality}", file=sys.stderr)
+                            break
                         captured_images.append(captured)
-                        print(f"  captured {point.id} -> {captured.filepath}")
+                        print(f"  captured {point.id} -> {captured.filepath} ({quality})")
                         break
 
                     command = input(
@@ -425,21 +493,42 @@ def main(argv: list[str] | None = None) -> int:
                         print(f"  skipped {point.id}")
                         break
 
-                    captured = node.capture(point)
+                    captured, quality = node.capture(point)
+                    if captured is None:
+                        rejected_count += 1
+                        print(
+                            f"  REJECTED {point.id}: {quality} -- not written. "
+                            "Retrying (press Enter again, 's' to skip, 'q' to abort).",
+                            file=sys.stderr,
+                        )
+                        continue
                     captured_images.append(captured)
-                    print(f"  captured {point.id} -> {captured.filepath}")
+                    print(f"  captured {point.id} -> {captured.filepath} ({quality})")
                     break
 
             print(
                 f"Captured {len(captured_images)} of {len(reference_points)} "
-                "reference image(s)."
+                f"reference image(s) ({rejected_count} rejected for quality)."
             )
 
             if not captured_images:
-                print(
-                    "No images were captured; no database index written.",
-                    file=sys.stderr,
-                )
+                if rejected_count > 0:
+                    print(
+                        f"No images were captured: all {rejected_count} candidate "
+                        "frame(s) failed the image-quality check (low feature "
+                        "count / near-uniform color / dominant green -- likely "
+                        "an untextured or unrendered ground plane). No database "
+                        "index written. Re-run with --debug-save-first-frame to "
+                        "inspect a frame, or --allow-low-quality to bypass "
+                        "(debugging only).",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        "No images were captured: no candidate ever reached the "
+                        "position/heading tolerance. No database index written.",
+                        file=sys.stderr,
+                    )
                 return 1
 
             try:

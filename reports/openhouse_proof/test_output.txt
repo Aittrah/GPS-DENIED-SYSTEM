@@ -1,0 +1,20 @@
+==> Running test suite
+....................ss.................................................. [ 26%]
+........................................................................ [ 52%]
+........................................................................ [ 79%]
+..ssss.s.ss..............................................                [100%]
+=============================== warnings summary ===============================
+../snap/codex/34/.local/lib/python3.12/site-packages/joblib/_multiprocessing_helpers.py:44
+  /home/hp/snap/codex/34/.local/lib/python3.12/site-packages/joblib/_multiprocessing_helpers.py:44: UserWarning: [Errno 13] Permission denied.  joblib will operate in serial mode
+    warnings.warn("%s.  joblib will operate in serial mode" % (e,))
+
+tests/unit/test_database.py::test_build_creates_db
+tests/unit/test_database.py::test_query_returns_top_k
+tests/unit/test_database.py::test_confidence_range
+tests/unit/test_database.py::test_get_stats
+tests/unit/test_database.py::test_clear
+  /home/hp/GPS-DENIED-SYSTEM/src/vns/database/reference_database.py:93: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.datetime.utcnow().isoformat()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+264 passed, 10 skipped, 6 warnings in 11.69s

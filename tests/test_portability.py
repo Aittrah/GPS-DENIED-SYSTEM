@@ -147,6 +147,7 @@ def test_launch_and_world_assets_are_portable() -> None:
 
     for world_file in world_files:
         content = world_file.read_text(encoding="utf-8")
-        assert "file://materials/scripts" in content
-        assert "file://materials/textures" in content
+        assert "model://qau_ground_plane" in content
+        assert "file://materials/scripts" not in content
+        assert "file://materials/textures" not in content
         assert "/home/" not in content

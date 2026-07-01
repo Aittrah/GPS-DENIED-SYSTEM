@@ -81,3 +81,61 @@ def test_compose_model_path_skips_missing_base_models(monkeypatch, tmp_path):
     monkeypatch.setattr(paths, "detect_gazebo_share_dir", lambda *a, **k: str(share))
     value = compose_gazebo_model_path("/proj/models", env={"GAZEBO_MODEL_PATH": "/pre"})
     assert value.split(os.pathsep) == ["/proj/models", "/pre"]
+
+
+def test_compose_model_path_appends_extra_model_dirs(monkeypatch, tmp_path):
+    share = _make_share(tmp_path, "gazebo-11", with_programs=True, with_models=True)
+    monkeypatch.setattr(paths, "detect_gazebo_share_dir", lambda *a, **k: str(share))
+    extra = tmp_path / "px4-models"
+    extra.mkdir()
+    value = compose_gazebo_model_path(
+        "/proj/models",
+        extra_model_dirs=(extra,),
+        env={},
+    )
+    assert value.split(os.pathsep) == [
+        "/proj/models",
+        str(extra),
+        str(share / "models"),
+    ]
+
+
+def test_resolve_px4_gazebo_models_dir(tmp_path):
+    models = tmp_path / "Tools/simulation/gazebo-classic/sitl_gazebo-classic/models"
+    models.mkdir(parents=True)
+    assert paths.resolve_px4_gazebo_models_dir(tmp_path) == models
+    assert paths.resolve_px4_gazebo_models_dir(tmp_path / "missing") is None
+
+
+def test_resolve_px4_gazebo_plugin_dir(tmp_path):
+    plugins = tmp_path / "build/px4_sitl_default/build_gazebo-classic"
+    plugins.mkdir(parents=True)
+    assert paths.resolve_px4_gazebo_plugin_dir(tmp_path) == plugins
+    assert paths.resolve_px4_gazebo_plugin_dir(tmp_path / "missing") is None
+
+
+def test_compose_gazebo_plugin_path(tmp_path):
+    plugins = tmp_path / "build/px4_sitl_default/build_gazebo-classic"
+    plugins.mkdir(parents=True)
+    value = paths.compose_gazebo_plugin_path(px4_root=tmp_path, env={})
+    assert value.split(os.pathsep) == [str(plugins)]
+
+
+def test_compose_gazebo_plugin_path_preserves_existing(tmp_path):
+    plugins = tmp_path / "build/px4_sitl_default/build_gazebo-classic"
+    plugins.mkdir(parents=True)
+    value = paths.compose_gazebo_plugin_path(
+        px4_root=tmp_path,
+        env={"GAZEBO_PLUGIN_PATH": "/pre/existing"},
+    )
+    assert value.split(os.pathsep) == [str(plugins), "/pre/existing"]
+
+
+def test_compose_px4_ld_library_path(tmp_path):
+    plugins = tmp_path / "build/px4_sitl_default/build_gazebo-classic"
+    plugins.mkdir(parents=True)
+    value = paths.compose_px4_ld_library_path(
+        px4_root=tmp_path,
+        env={"LD_LIBRARY_PATH": "/pre/lib"},
+    )
+    assert value.split(os.pathsep) == [str(plugins), "/pre/lib"]

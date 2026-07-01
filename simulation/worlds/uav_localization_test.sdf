@@ -15,7 +15,7 @@
 
   The camera publishes on /vns_drone/downward_camera/image_raw (same as the
   iris_downward_cam drone), which is exactly the topic vns_node subscribes to per
-  simulation.yaml (ros.camera_topic) -- no remap needed.
+  simulation.yaml (ros.camera_topic); no remap needed.
 
   Run (headless): start gzserver on this world with the gazebo_ros init and
   factory system plugins (libgazebo_ros_init.so, libgazebo_ros_factory.so), then
@@ -54,49 +54,12 @@
       <direction>0 0 -1</direction>
     </light>
 
-    <!-- Ground plane + georeferenced campus-map texture (identical to
-         uav_test_world.sdf). The textured box is mapped 1:1 onto a 600x600 m
-         area centred on the origin. -->
-    <model name="qau_ground">
-      <static>true</static>
-      <link name="link">
-        <collision name="collision">
-          <geometry>
-            <plane>
-              <normal>0 0 1</normal>
-              <size>1000 1000</size>
-            </plane>
-          </geometry>
-        </collision>
-        <visual name="visual">
-          <geometry>
-            <plane>
-              <normal>0 0 1</normal>
-              <size>1000 1000</size>
-            </plane>
-          </geometry>
-          <material>
-            <ambient>0.35 0.45 0.3 1</ambient>
-            <diffuse>0.4 0.5 0.35 1</diffuse>
-          </material>
-        </visual>
-        <visual name="campus_map">
-          <pose>0 0 0.02 0 0 0</pose>
-          <geometry>
-            <box>
-              <size>600 600 0.04</size>
-            </box>
-          </geometry>
-          <material>
-            <script>
-              <uri>file://materials/scripts</uri>
-              <uri>file://materials/textures</uri>
-              <name>QAUCampus/Ground</name>
-            </script>
-          </material>
-        </visual>
-      </link>
-    </model>
+    <!-- Ground plane: real satellite-textured, portable model://qau_ground_plane
+         (identical to uav_test_world.sdf; simulation/models/qau_ground_plane/). -->
+    <include>
+      <uri>model://qau_ground_plane</uri>
+      <pose>0 0 0 0 0 0</pose>
+    </include>
 
     <!-- ====================================================== -->
     <!-- STATIC DOWNWARD-CAMERA OBSERVER over grid_center @ 240 m -->
@@ -107,7 +70,7 @@
       <pose>0 0 240 0 0 0</pose>
       <link name="camera_link">
         <!-- Pitch +90 deg so the camera optical axis (+X) points straight down. -->
-        <pose>0 0 0 0 1.5708 0</pose>
+        <pose>0 0 0 0 0 0</pose>
         <visual name="camera_visual">
           <geometry><box><size>0.4 0.4 0.4</size></box></geometry>
           <material>
@@ -116,6 +79,8 @@
           </material>
         </visual>
         <sensor name="downward_camera" type="camera">
+          <!-- FR-11: camera optical axis points straight down for nadir captures. -->
+          <pose>0 0 0 0 1.5708 0</pose>
           <always_on>true</always_on>
           <update_rate>10</update_rate>
           <visualize>true</visualize>

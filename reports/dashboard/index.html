@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>VNS Post-hoc Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4efe4;
+      --panel: #fffdf8;
+      --ink: #1b1f24;
+      --muted: #6b7280;
+      --line: #d6cfc2;
+      --accent: #0f766e;
+      --accent-soft: #d8efe9;
+    }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #ebe2cf 0%, var(--bg) 100%);
+      color: var(--ink);
+    }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .hero, .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(27, 31, 36, 0.08);
+    }
+    .hero {
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .stat {
+      padding: 14px;
+      background: var(--accent-soft);
+      border-radius: 12px;
+    }
+    .stat strong {
+      display: block;
+      font-size: 24px;
+      color: var(--accent);
+    }
+    .panel {
+      padding: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <h1>VNS Post-hoc Dashboard</h1>
+      <div class="meta">
+        Log: ground_truth_1782887087.jsonl<br>
+        Manifest: vns_empty_manifest.Hl8haO.jsonl<br>
+        Database: qau_campus.vnsdb
+      </div>
+      <div class="stats">
+        <div class="stat"><span>Total Samples</span><strong>375</strong></div>
+        <div class="stat"><span>Localization Successes</span><strong>375</strong></div>
+        <div class="stat"><span>Matched References</span><strong>375</strong></div>
+        <div class="stat"><span>Mean Horizontal Error</span><strong>N/A</strong></div>
+        <div class="stat"><span>Mean Position Error</span><strong>N/A</strong></div>
+      </div>
+    </section>
+    <section class="panel">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Frame</th>
+            <th>Matched Ref</th>
+            <th>Mode</th>
+            <th>GNSS</th>
+            <th>Frame Delta</th>
+            <th>Horizontal Error</th>
+            <th>Position Error</th>
+            <th>Offline Inliers</th>
+            <th>Overlay</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>0</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>1</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>2</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>3</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>4</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>5</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>6</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>7</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>8</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>9</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>10</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>11</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>12</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>13</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>14</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>15</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>16</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>17</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>18</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>19</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>20</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>21</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>22</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>23</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>24</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>25</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>26</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>27</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>28</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>29</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>30</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>31</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>32</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>33</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>34</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>35</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>36</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>37</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>38</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>39</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>40</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>41</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>42</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>43</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>44</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>45</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>46</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>47</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>48</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>49</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>50</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>51</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>52</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>53</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>54</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>55</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>56</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>57</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>58</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr><tr><td>59</td><td>N/A</td><td>qau_tile_r3_c2</td><td>VISION</td><td>DENIED</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>No frame manifest entry was available.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

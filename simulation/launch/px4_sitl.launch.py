@@ -31,7 +31,9 @@ from launch.substitutions import LaunchConfiguration
 
 from vns.utils.paths import (
     compose_gazebo_model_path,
+    compose_gazebo_plugin_path,
     compose_gazebo_resource_path,
+    compose_px4_ld_library_path,
     resolve_simulation_root,
 )
 
@@ -93,6 +95,7 @@ def generate_launch_description():
     # (/usr/share/gazebo-11) — so a gzserver that inherits this environment can
     # resolve the camera sensor's shaders and base models consistently with the
     # other launch files.
+    px4_dir_default = Path.home() / 'PX4-Autopilot'
     gazebo_model_path = SetEnvironmentVariable(
         'GAZEBO_MODEL_PATH',
         compose_gazebo_model_path(models_dir),
@@ -100,6 +103,14 @@ def generate_launch_description():
     gazebo_resource_path = SetEnvironmentVariable(
         'GAZEBO_RESOURCE_PATH',
         compose_gazebo_resource_path(worlds_dir),
+    )
+    gazebo_plugin_path = SetEnvironmentVariable(
+        'GAZEBO_PLUGIN_PATH',
+        compose_gazebo_plugin_path(px4_root=px4_dir_default),
+    )
+    px4_ld_library_path = SetEnvironmentVariable(
+        'LD_LIBRARY_PATH',
+        compose_px4_ld_library_path(px4_root=px4_dir_default),
     )
     gazebo_model_db = SetEnvironmentVariable('GAZEBO_MODEL_DATABASE_URI', '')
 
@@ -146,6 +157,8 @@ def generate_launch_description():
         px4_sim_world,
         gazebo_model_path,
         gazebo_resource_path,
+        gazebo_plugin_path,
+        px4_ld_library_path,
         gazebo_model_db,
 
         # Delayed start so Gazebo (if launched in parallel) has time to come up

@@ -27,7 +27,7 @@ behavior.
    packaged localizer fails with a clear error unless
    `retrieval.bovw.fallback_to_flann` is enabled.
 6. Unit tests cover both retrieval modes and prove the packaged runtime path
-   uses the configured retrieval backend without importing
+   uses the configured retrieval backend without importing the now-removed
    `simulation/scripts/visual_navigation.py`.
 
 ## Dependencies
@@ -57,7 +57,8 @@ FR-3, FR-8
 ### Simulation Tests
 - The packaged ROS runtime (`src/vns/core/vns_node.py` -> `VnsRuntime` ->
   `VisualLocalizer`) can be launched against a BoVW-enabled database without
-  relying on the legacy `simulation/scripts/visual_navigation.py` path.
+  relying on the legacy `simulation/scripts/visual_navigation.py` path
+  (now removed; see `docs/runtime_consolidation.md`).
 
 ## Status
 - [ ] Not Started

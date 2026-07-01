@@ -25,8 +25,35 @@ class DeadReckoning:
         initial_state: UAVState | None = None,
         *,
         gravity_m_s2: float = 9.80665,
+        gyro_bias_rad_s: tuple[float, float, float] | list[float] = (0.0, 0.0, 0.0),
+        accelerometer_bias_m_s2: tuple[float, float, float] | list[float] = (
+            0.0,
+            0.0,
+            0.0,
+        ),
+        max_bridge_duration_seconds: float = 10.0,
+        confidence_decay_per_second: float = 0.1,
+        max_dt_seconds: float = 1.0,
+        timestamp_reset_threshold_seconds: float = 1.0,
     ) -> None:
         self._gravity_m_s2 = float(gravity_m_s2)
+        self._gyro_bias_rad_s = self._coerce_vector3(gyro_bias_rad_s, "gyro_bias_rad_s")
+        self._accelerometer_bias_m_s2 = self._coerce_vector3(
+            accelerometer_bias_m_s2,
+            "accelerometer_bias_m_s2",
+        )
+        self._max_bridge_duration_seconds = float(max_bridge_duration_seconds)
+        if self._max_bridge_duration_seconds <= 0.0:
+            raise ValueError("max_bridge_duration_seconds must be positive.")
+        self._confidence_decay_per_second = float(confidence_decay_per_second)
+        if self._confidence_decay_per_second < 0.0:
+            raise ValueError("confidence_decay_per_second must be non-negative.")
+        self._max_dt_seconds = float(max_dt_seconds)
+        if self._max_dt_seconds <= 0.0:
+            raise ValueError("max_dt_seconds must be positive.")
+        self._timestamp_reset_threshold_seconds = float(timestamp_reset_threshold_seconds)
+        if self._timestamp_reset_threshold_seconds <= 0.0:
+            raise ValueError("timestamp_reset_threshold_seconds must be positive.")
         self._estimate = self._resolve_initial_state(initial_state)
         self._orientation_quaternion = self._euler_to_quaternion(
             self._estimate.roll,
@@ -34,6 +61,17 @@ class DeadReckoning:
             self._estimate.yaw,
         )
         self._last_timestamp: float | None = None
+        self._last_trusted_correction_timestamp: float | None = None
+        self._base_correction_confidence = 0.0
+        self._duplicate_sample_count = 0
+        self._stale_sample_count = 0
+        self._timestamp_reset_count = 0
+        self._clamped_dt_count = 0
+        self._last_update_outcome = "uninitialized"
+        self._sync_state(
+            self._estimate,
+            trusted_correction=initial_state is not None and initial_state.confidence > 0.0,
+        )
 
     @property
     def initialized(self) -> bool:
@@ -43,14 +81,66 @@ class DeadReckoning:
     def orientation_quaternion(self) -> tuple[float, float, float, float]:
         return tuple(float(component) for component in self._orientation_quaternion)
 
+    @property
+    def gyro_bias_rad_s(self) -> tuple[float, float, float]:
+        return tuple(float(component) for component in self._gyro_bias_rad_s)
+
+    @property
+    def accelerometer_bias_m_s2(self) -> tuple[float, float, float]:
+        return tuple(float(component) for component in self._accelerometer_bias_m_s2)
+
+    @property
+    def last_trusted_correction_timestamp(self) -> float | None:
+        return self._last_trusted_correction_timestamp
+
+    @property
+    def last_timestamp(self) -> float | None:
+        return self._last_timestamp
+
+    @property
+    def duplicate_sample_count(self) -> int:
+        return self._duplicate_sample_count
+
+    @property
+    def stale_sample_count(self) -> int:
+        return self._stale_sample_count
+
+    @property
+    def timestamp_reset_count(self) -> int:
+        return self._timestamp_reset_count
+
+    @property
+    def clamped_dt_count(self) -> int:
+        return self._clamped_dt_count
+
+    @property
+    def last_update_outcome(self) -> str:
+        """One of: explicit_dt, bootstrap, normal, duplicate, stale, reset, clamped."""
+        return self._last_update_outcome
+
     def reset(self, initial_state: UAVState | None = None) -> None:
-        self._estimate = self._resolve_initial_state(initial_state)
+        state = self._resolve_initial_state(initial_state)
         self._orientation_quaternion = self._euler_to_quaternion(
-            self._estimate.roll,
-            self._estimate.pitch,
-            self._estimate.yaw,
+            state.roll,
+            state.pitch,
+            state.yaw,
         )
-        self._last_timestamp = None
+        self._sync_state(
+            state,
+            trusted_correction=initial_state is not None and initial_state.confidence > 0.0,
+        )
+
+    def correct(self, corrected_state: UAVState) -> UAVState:
+        self._orientation_quaternion = self._euler_to_quaternion(
+            corrected_state.roll,
+            corrected_state.pitch,
+            corrected_state.yaw,
+        )
+        self._sync_state(
+            self._resolve_initial_state(corrected_state),
+            trusted_correction=True,
+        )
+        return self.get_estimate(current_time=corrected_state.timestamp)
 
     def update(
         self,
@@ -60,16 +150,16 @@ class DeadReckoning:
     ) -> UAVState:
         step_dt = self._resolve_dt(sample.timestamp, dt)
         if step_dt is None:
-            return self.get_estimate()
+            return self.get_estimate(current_time=self._estimate.timestamp)
 
         gyro_body = np.array(
             [sample.gyro_x, sample.gyro_y, sample.gyro_z],
             dtype=np.float64,
-        )
+        ) - self._gyro_bias_rad_s
         accel_body = np.array(
             [sample.accel_x, sample.accel_y, sample.accel_z],
             dtype=np.float64,
-        )
+        ) - self._accelerometer_bias_m_s2
 
         delta_quaternion = self._delta_quaternion(gyro_body, step_dt)
         self._orientation_quaternion = self._normalize_quaternion(
@@ -124,13 +214,17 @@ class DeadReckoning:
             roll=roll,
             pitch=pitch,
             yaw=yaw,
+            confidence=self._confidence_at(timestamp),
             source="imu",
             timestamp=timestamp,
         )
         self._last_timestamp = timestamp
-        return self.get_estimate()
+        return self.get_estimate(current_time=timestamp)
 
-    def get_estimate(self) -> UAVState:
+    def get_estimate(self, *, current_time: float | None = None) -> UAVState:
+        estimate_time = (
+            self._estimate.timestamp if current_time is None else float(current_time)
+        )
         return replace(
             self._estimate,
             position=NEDPoint(
@@ -138,7 +232,24 @@ class DeadReckoning:
                 east=self._estimate.position.east,
                 down=self._estimate.position.down,
             ),
+            confidence=self._confidence_at(estimate_time),
         )
+
+    def time_since_last_trusted_correction(
+        self,
+        *,
+        current_time: float | None = None,
+    ) -> float | None:
+        if self._last_trusted_correction_timestamp is None:
+            return None
+        now = self._estimate.timestamp if current_time is None else float(current_time)
+        return max(0.0, now - self._last_trusted_correction_timestamp)
+
+    def is_bridge_valid(self, *, current_time: float | None = None) -> bool:
+        age = self.time_since_last_trusted_correction(current_time=current_time)
+        if age is None:
+            return False
+        return age <= self._max_bridge_duration_seconds
 
     def _resolve_initial_state(self, initial_state: UAVState | None) -> UAVState:
         if initial_state is None:
@@ -158,6 +269,44 @@ class DeadReckoning:
         state.source = "imu"
         return state
 
+    def _sync_state(
+        self,
+        state: UAVState,
+        *,
+        trusted_correction: bool,
+    ) -> None:
+        self._estimate = replace(
+            state,
+            confidence=self._clamp_confidence(state.confidence),
+            source="imu",
+        )
+        if trusted_correction:
+            correction_timestamp = float(self._estimate.timestamp)
+            self._last_timestamp = correction_timestamp
+            self._last_trusted_correction_timestamp = correction_timestamp
+            self._base_correction_confidence = self._clamp_confidence(
+                self._estimate.confidence
+            )
+        else:
+            self._last_timestamp = None
+            self._last_trusted_correction_timestamp = None
+            self._base_correction_confidence = 0.0
+        self._estimate = replace(
+            self._estimate,
+            confidence=self._confidence_at(self._estimate.timestamp),
+        )
+
+    def _confidence_at(self, current_time: float) -> float:
+        if not self.is_bridge_valid(current_time=current_time):
+            return 0.0
+        age = self.time_since_last_trusted_correction(current_time=current_time)
+        if age is None:
+            return 0.0
+        return self._clamp_confidence(
+            self._base_correction_confidence
+            - self._confidence_decay_per_second * age
+        )
+
     def _resolve_dt(
         self,
         timestamp: float | None,
@@ -166,6 +315,7 @@ class DeadReckoning:
         if dt is not None:
             if dt <= 0.0:
                 raise ValueError("dt must be positive.")
+            self._last_update_outcome = "explicit_dt"
             return float(dt)
 
         if timestamp is None:
@@ -174,12 +324,47 @@ class DeadReckoning:
         if self._last_timestamp is None:
             self._last_timestamp = float(timestamp)
             self._estimate = replace(self._estimate, timestamp=float(timestamp))
+            self._last_update_outcome = "bootstrap"
             return None
 
         step_dt = float(timestamp) - self._last_timestamp
-        if step_dt <= 0.0:
-            raise ValueError("IMU sample timestamps must be strictly increasing.")
+
+        if step_dt == 0.0:
+            self._duplicate_sample_count += 1
+            self._last_update_outcome = "duplicate"
+            return None
+
+        if step_dt < 0.0:
+            if -step_dt >= self._timestamp_reset_threshold_seconds:
+                self._last_timestamp = float(timestamp)
+                self._estimate = replace(self._estimate, timestamp=float(timestamp))
+                self._timestamp_reset_count += 1
+                self._last_update_outcome = "reset"
+                return None
+            self._stale_sample_count += 1
+            self._last_update_outcome = "stale"
+            return None
+
+        if step_dt > self._max_dt_seconds:
+            self._clamped_dt_count += 1
+            self._last_update_outcome = "clamped"
+            return self._max_dt_seconds
+
+        self._last_update_outcome = "normal"
         return step_dt
+
+    @staticmethod
+    def _coerce_vector3(
+        value: tuple[float, float, float] | list[float],
+        field_name: str,
+    ) -> np.ndarray:
+        if len(value) != 3:
+            raise ValueError(f"{field_name} must contain exactly 3 values.")
+        return np.array([float(component) for component in value], dtype=np.float64)
+
+    @staticmethod
+    def _clamp_confidence(value: float) -> float:
+        return float(max(0.0, min(1.0, value)))
 
     @staticmethod
     def _delta_quaternion(gyro_body: np.ndarray, dt: float) -> np.ndarray:

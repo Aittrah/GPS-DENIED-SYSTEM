@@ -105,7 +105,7 @@ class PositionBlender:
             return self._activate_failsafe()
 
         if accepted_visual is not None and visual_pose_ned is not None:
-            self._reset_dead_reckoning(
+            self._correct_dead_reckoning(
                 dead_reckoning,
                 dead_reckoning_estimate,
                 visual_pose_ned,
@@ -119,8 +119,11 @@ class PositionBlender:
         if accepted_visual is not None and visual_pose_ned is None:
             logger.warning("Visual pose correction missing NED pose; continuing with DR.")
 
-        dr_ready = dead_reckoning_ready or self._last_estimate is not None
-        if dead_reckoning_estimate is not None and dr_ready:
+        if (
+            dead_reckoning_estimate is not None
+            and dead_reckoning_ready
+            and dead_reckoning_estimate.confidence > 0.0
+        ):
             dr_position = self._dead_reckoning_to_geodetic(
                 dead_reckoning_estimate,
                 geo_origin,
@@ -213,7 +216,7 @@ class PositionBlender:
         self._last_visual_time = now
         return visual_pos
 
-    def _reset_dead_reckoning(
+    def _correct_dead_reckoning(
         self,
         dead_reckoning: DeadReckoning,
         estimate: UAVState | None,
@@ -232,8 +235,8 @@ class PositionBlender:
             confidence=max(base_state.confidence, float(visual_confidence or 0.0)),
             timestamp=timestamp,
         )
-        dead_reckoning.reset(corrected_state)
-        logger.info("Dead reckoning reset from visual correction.")
+        dead_reckoning.correct(corrected_state)
+        logger.info("Dead reckoning corrected from visual fix.")
 
     def _dead_reckoning_to_geodetic(
         self,

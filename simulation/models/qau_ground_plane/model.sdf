@@ -1,0 +1,54 @@
+<?xml version="1.0" ?>
+<sdf version="1.7">
+  <model name="qau_ground_plane">
+    <static>true</static>
+    <link name="link">
+      <collision name="collision">
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>1000 1000</size>
+          </plane>
+        </geometry>
+      </collision>
+
+      <!-- Base plane visual for terrain beyond the textured satellite box.
+           Color is the mean color of the cleaned satellite texture (see
+           simulation/scripts/build_satellite_ground_texture.py), not an
+           arbitrary placeholder, so the edge of the textured box blends in. -->
+      <visual name="base">
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>1000 1000</size>
+          </plane>
+        </geometry>
+        <material>
+          <ambient>0.388 0.400 0.398 1</ambient>
+          <diffuse>0.388 0.400 0.398 1</diffuse>
+        </material>
+      </visual>
+
+      <!-- Real QAU campus satellite photo, cleaned of Google Earth UI chrome,
+           mapped 1:1 onto a 600m x 450.6m box centred on the world origin
+           (world <spherical_coordinates> == the photo's placemark coordinate,
+           lat 33.7470 / lon 73.1370). Aspect ratio preserved from the source
+           image, not stretched to a square. -->
+      <visual name="satellite_map">
+        <pose>0 0 0.02 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>600 450.6 0.04</size>
+          </box>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://qau_ground_plane/materials/scripts</uri>
+            <uri>model://qau_ground_plane/materials/textures</uri>
+            <name>QAU/Satellite</name>
+          </script>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

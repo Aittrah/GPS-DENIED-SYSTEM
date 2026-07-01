@@ -38,11 +38,17 @@ from vns.vision.localizer import VisualLocalizer  # noqa: E402
 
 CONFIG = _REPO / "simulation/config/simulation.yaml"
 DB_PATH = _REPO / "simulation/database/qau_campus.vnsdb"
-TEXTURE = _REPO / "simulation/worlds/materials/textures/qau_campus_map.png"
+# The real satellite texture the Gazebo ground plane (qau_ground_plane) renders and
+# that the reference tiles are cut from -- so this offline render matches the live
+# world and the committed DB (see build_real_reference_tiles.py).
+TEXTURE = _REPO / "simulation/models/qau_ground_plane/materials/textures/qau_satellite.png"
 
-# Must match build_ground_texture.py: the texture covers a CANVAS_M square
-# centred on the world/DB origin (lat 33.7470, lon 73.1370).
-CANVAS_M = 600.0
+# Must match qau_ground_plane/model.sdf + build_satellite_ground_texture.py: the
+# real satellite texture covers a CANVAS_EW x CANVAS_NS box (metres, east x north)
+# centred on the world/DB origin (lat 33.7470, lon 73.1370). It is NOT square.
+CANVAS_M = 600.0            # east-west extent (kept name for back-compat)
+CANVAS_EW = 600.0
+CANVAS_NS = 450.6
 ORIGIN_LAT = 33.7470
 ORIGIN_LON = 73.1370
 M_PER_DEG_LAT = 111320.0
@@ -84,8 +90,10 @@ def render_ground_view(
     cx = float(camera_cfg.get("cx", width / 2.0))
     cy = float(camera_cfg.get("cy", height / 2.0))
 
-    tex_px = texture.shape[0]
-    px_per_m = tex_px / canvas_m
+    # Per-axis metres->pixels: the real satellite texture is non-square
+    # (CANVAS_EW x CANVAS_NS metres over shape[1] x shape[0] pixels).
+    px_per_m_x = texture.shape[1] / CANVAS_EW
+    px_per_m_y = texture.shape[0] / CANVAS_NS
 
     uu, vv = np.meshgrid(
         np.arange(width, dtype=np.float32),
@@ -102,8 +110,8 @@ def render_ground_view(
         ry = s * (gx - x_cam) + c * (gy - y_cam) + y_cam
         gx, gy = rx, ry
 
-    map_x = ((gx + canvas_m / 2.0) * px_per_m).astype(np.float32)
-    map_y = ((canvas_m / 2.0 - gy) * px_per_m).astype(np.float32)
+    map_x = ((gx + CANVAS_EW / 2.0) * px_per_m_x).astype(np.float32)
+    map_y = ((CANVAS_NS / 2.0 - gy) * px_per_m_y).astype(np.float32)
     return cv2.remap(
         texture, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE
     )

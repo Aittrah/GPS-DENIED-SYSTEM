@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import pickle
 from pathlib import Path
 from typing import Optional
@@ -7,6 +8,7 @@ from typing import Optional
 import numpy as np
 
 from ..perception.feature_extractor import DINOv2Extractor, ORBVerifier
+from ..preprocessing.calibration import CameraCalibration, load_camera_calibration
 from ..preprocessing.satellite_preprocessor import SatellitePreprocessor
 from ..preprocessing.uav_preprocessor import UAVPreprocessor
 from ..preprocessing.patch_generator import PatchGenerator
@@ -21,6 +23,7 @@ except ImportError:
     faiss = None  # type: ignore
     print("[FAISSDatabase] faiss is not installed (pip install faiss-cpu). Build/query disabled.")
 
+logger = logging.getLogger("vns.database.faiss")
 
 
 class FAISSDatabase:
@@ -32,18 +35,32 @@ class FAISSDatabase:
 
     DESCRIPTOR_DIM = 384  # DINOv2 ViT-S/14 output dimension
 
-    def __init__(self,
-                 index_path: str = "data/database/faiss.index",
-                 meta_path: str = "data/database/metadata.pkl"):
+    def __init__(
+        self,
+        index_path: str = "data/database/faiss.index",
+        meta_path: str = "data/database/metadata.pkl",
+        *,
+        query_calibration_path: str | None = None,
+        undistort_queries: bool = False,
+    ):
         self.index_path = Path(index_path)
         self.meta_path = Path(meta_path)
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.index: Optional[object] = None
         self.metadata: list[dict] = []
+        self._undistort_queries = bool(undistort_queries)
+        self._query_calibration: CameraCalibration | None = None
 
         self.extractor = DINOv2Extractor()
         self.verifier = ORBVerifier()
+
+        if query_calibration_path is not None:
+            self._query_calibration = load_camera_calibration(query_calibration_path)
+            logger.info(
+                "Loaded optional UAV query calibration from %s",
+                query_calibration_path,
+            )
 
         self._init_index()
 
@@ -103,7 +120,6 @@ class FAISSDatabase:
             meters_per_pixel=meters_per_pixel,
             source="satellite",
             base_id=Path(satellite_image_path).stem,
-            save_dir="data/patches/satellite",
         )
 
         total = len(patches)
@@ -156,7 +172,10 @@ class FAISSDatabase:
         if self.index.ntotal == 0:
             return []
 
-        preprocessor = UAVPreprocessor()
+        preprocessor = UAVPreprocessor(
+            calibration=self._query_calibration,
+            undistort=self._undistort_queries,
+        )
         pg = PatchGenerator()
 
         processed = preprocessor.preprocess_frame(uav_image)

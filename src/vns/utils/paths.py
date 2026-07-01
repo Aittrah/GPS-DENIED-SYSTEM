@@ -113,18 +113,76 @@ def compose_gazebo_resource_path(
     return os.pathsep.join(parts)
 
 
+def resolve_px4_root(px4_root: str | Path | None = None) -> Path:
+    """Return the PX4-Autopilot checkout root."""
+    return Path(px4_root or Path.home() / "PX4-Autopilot")
+
+
+def resolve_px4_gazebo_models_dir(px4_root: str | Path | None = None) -> Path | None:
+    """Return PX4 Classic SITL models dir (contains ``gps``, ``iris``, etc.)."""
+    root = resolve_px4_root(px4_root)
+    models = root / "Tools/simulation/gazebo-classic/sitl_gazebo-classic/models"
+    return models if models.is_dir() else None
+
+
+def resolve_px4_gazebo_plugin_dir(px4_root: str | Path | None = None) -> Path | None:
+    """Return PX4 Classic Gazebo plugin build dir (``libgazebo_mavlink_interface.so``)."""
+    root = resolve_px4_root(px4_root)
+    plugins = root / "build/px4_sitl_default/build_gazebo-classic"
+    return plugins if plugins.is_dir() else None
+
+
+def compose_gazebo_plugin_path(
+    *,
+    px4_root: str | Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Build ``GAZEBO_PLUGIN_PATH`` with PX4 Classic SITL plugins prepended."""
+    current_env = os.environ if env is None else env
+    parts: list[str] = []
+    plugin_dir = resolve_px4_gazebo_plugin_dir(px4_root)
+    if plugin_dir is not None:
+        parts.append(str(plugin_dir))
+    existing = current_env.get("GAZEBO_PLUGIN_PATH", "")
+    if existing:
+        parts.append(existing)
+    return os.pathsep.join(parts)
+
+
+def compose_px4_ld_library_path(
+    *,
+    px4_root: str | Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Prepend PX4 Classic plugin dir to ``LD_LIBRARY_PATH`` for gzserver."""
+    current_env = os.environ if env is None else env
+    parts: list[str] = []
+    plugin_dir = resolve_px4_gazebo_plugin_dir(px4_root)
+    if plugin_dir is not None:
+        parts.append(str(plugin_dir))
+    existing = current_env.get("LD_LIBRARY_PATH", "")
+    if existing:
+        parts.append(existing)
+    return os.pathsep.join(parts)
+
+
 def compose_gazebo_model_path(
     models_dir: str | Path,
     *,
+    extra_model_dirs: tuple[str | Path, ...] = (),
     env: Mapping[str, str] | None = None,
 ) -> str:
-    """Build ``GAZEBO_MODEL_PATH``: project models, gazebo base models, then existing.
+    """Build ``GAZEBO_MODEL_PATH``: project models, PX4/extras, gazebo base, existing.
 
     Appending ``<share>/models`` lets base models (e.g. ``sun``) resolve offline
     even with the online model database disabled.
     """
     current_env = os.environ if env is None else env
     parts = [str(Path(models_dir))]
+    for extra in extra_model_dirs:
+        extra_path = Path(extra)
+        if extra_path.is_dir():
+            parts.append(str(extra_path))
     share_dir = detect_gazebo_share_dir()
     if share_dir:
         base_models = Path(share_dir) / "models"

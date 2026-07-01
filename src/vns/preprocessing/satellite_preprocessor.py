@@ -6,6 +6,9 @@ import numpy as np
 # Larger = sharper patches but more DINOv2 calls (slower build).
 # 1024 gives ~77 patches from an 8K image in ~10 min on CPU.
 MAX_SHORT_SIDE = 1024
+# Backward-compatible alias for older callers/tests that treated the
+# preprocessing bound as a square target tuple.
+TARGET_SIZE = (MAX_SHORT_SIDE, MAX_SHORT_SIDE)
 
 
 class SatellitePreprocessor:

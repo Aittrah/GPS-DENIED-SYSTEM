@@ -1,0 +1,27 @@
+// Ogre material for the QAU campus satellite ground texture.
+// The texture (materials/textures/qau_satellite.png) is a cleaned real
+// satellite photo of QAU campus, mapped 1:1 onto the 600x450.6 m ground box
+// in model.sdf. See simulation/scripts/build_satellite_ground_texture.py for
+// how it was produced from data/satellite/raw/qau_campus_satellite.jpg.
+//
+// Rendered UNLIT (lighting off): the existing QAUCampus/Ground material
+// (simulation/worlds/materials/scripts/qau_ground.material) found that scene
+// lighting overexposes the ground texture, blowing out contrast and dropping
+// the downward camera's ORB match confidence. Same fix applied here.
+material QAU/Satellite
+{
+  receive_shadows off
+  technique
+  {
+    pass
+    {
+      lighting off
+
+      texture_unit
+      {
+        texture qau_satellite.png
+        filtering trilinear
+      }
+    }
+  }
+}

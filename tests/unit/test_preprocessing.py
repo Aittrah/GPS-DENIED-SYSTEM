@@ -1,6 +1,7 @@
-﻿import numpy as np
+﻿import cv2
+import numpy as np
 import pytest
-import cv2
+
 from vns.preprocessing.satellite_preprocessor import SatellitePreprocessor, TARGET_SIZE
 from vns.preprocessing.uav_preprocessor import UAVPreprocessor
 from vns.preprocessing.patch_generator import PatchGenerator, PATCH_SIZE, STRIDE
@@ -23,7 +24,7 @@ def center():
 
 class TestSatellitePreprocessor:
 
-    def test_output_is_target_size(self):
+    def test_output_preserves_shape_when_short_side_is_at_bound(self):
         proc = SatellitePreprocessor()
         result = proc.load_and_preprocess_array(make_image(1024, 1024))
         assert result.shape == (TARGET_SIZE[1], TARGET_SIZE[0], 3)
@@ -37,10 +38,15 @@ class TestSatellitePreprocessor:
         proc = SatellitePreprocessor()
         assert proc.load_and_preprocess('nonexistent.jpg') is None
 
-    def test_small_image_upscaled(self):
+    def test_small_image_is_not_upscaled(self):
         proc = SatellitePreprocessor()
         result = proc.load_and_preprocess_array(make_image(64, 64))
-        assert result.shape[:2] == (TARGET_SIZE[1], TARGET_SIZE[0])
+        assert result.shape[:2] == (64, 64)
+
+    def test_large_image_caps_short_side_and_preserves_aspect_ratio(self):
+        proc = SatellitePreprocessor()
+        result = proc.load_and_preprocess_array(make_image(2048, 4096))
+        assert result.shape == (1024, 2048, 3)
 
     def test_output_not_all_zeros(self):
         proc = SatellitePreprocessor()
@@ -49,11 +55,11 @@ class TestSatellitePreprocessor:
 
 class TestUAVPreprocessor:
 
-    def test_output_is_target_size(self):
+    def test_output_preserves_shape_when_input_is_smaller_than_target(self):
         proc = UAVPreprocessor()
         result = proc.preprocess_frame(make_image())
         assert result is not None
-        assert result.shape == (TARGET_SIZE[1], TARGET_SIZE[0], 3)
+        assert result.shape == (512, 512, 3)
 
     def test_empty_frame_returns_none(self):
         proc = UAVPreprocessor()
@@ -61,6 +67,12 @@ class TestUAVPreprocessor:
 
     def test_target_size_matches_satellite(self):
         assert UAVPreprocessor.TARGET_SIZE == TARGET_SIZE
+
+    def test_large_frame_caps_short_side_and_preserves_aspect_ratio(self):
+        proc = UAVPreprocessor()
+        result = proc.preprocess_frame(make_image(1536, 3072))
+        assert result is not None
+        assert result.shape == (1024, 2048, 3)
 
     def test_output_dtype_is_uint8(self):
         proc = UAVPreprocessor()

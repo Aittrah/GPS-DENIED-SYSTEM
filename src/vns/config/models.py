@@ -126,6 +126,24 @@ class NavigationConfig(VnsBaseModel):
     position_continuity_threshold: float = 2.0
 
 
+class DeadReckoningConfig(VnsBaseModel):
+    gyro_bias_rad_s: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
+    accelerometer_bias_m_s2: list[float] = Field(
+        default_factory=lambda: [0.0, 0.0, 0.0]
+    )
+    max_bridge_duration_seconds: float = Field(default=10.0, gt=0.0)
+    confidence_decay_per_second: float = Field(default=0.1, ge=0.0)
+    max_dt_seconds: float = Field(default=1.0, gt=0.0)
+    timestamp_reset_threshold_seconds: float = Field(default=1.0, gt=0.0)
+
+    @field_validator("gyro_bias_rad_s", "accelerometer_bias_m_s2")
+    @classmethod
+    def _validate_vector3(cls, value: list[float]) -> list[float]:
+        if len(value) != 3:
+            raise ValueError("dead_reckoning bias vectors must contain exactly 3 values.")
+        return [float(item) for item in value]
+
+
 class DatabaseConfig(VnsBaseModel):
     path: str = "../database/qau_campus.vnsdb"
     query_radius_deg: float = 0.001
@@ -173,6 +191,17 @@ class GeoReferenceConfig(VnsBaseModel):
     origin_altitude: float = 550.0
 
 
+class GroundTextureConfig(VnsBaseModel):
+    texture_path: str = "../models/qau_ground_plane/materials/textures/qau_satellite.png"
+    world_size_east_m: float = 600.0
+    world_size_north_m: float = 450.6
+    origin_latitude: float = 33.7470
+    origin_longitude: float = 73.1370
+    gazebo_origin_x: float = 0.0
+    gazebo_origin_y: float = 0.0
+    axis_convention: str = "x=east, y=north"
+
+
 class VnsConfig(VnsBaseModel):
     camera: CameraConfig = Field(default_factory=CameraConfig)
     preprocessing: PreprocessingConfig = Field(default_factory=PreprocessingConfig)
@@ -184,12 +213,14 @@ class VnsConfig(VnsBaseModel):
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     gnss: GnssConfig = Field(default_factory=GnssConfig)
     navigation: NavigationConfig = Field(default_factory=NavigationConfig)
+    dead_reckoning: DeadReckoningConfig = Field(default_factory=DeadReckoningConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     mavlink: MavlinkConfig = Field(default_factory=MavlinkConfig)
     ros: RosConfig = Field(default_factory=RosConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     simulation: SimulationConfig = Field(default_factory=SimulationConfig)
     geo_reference: GeoReferenceConfig = Field(default_factory=GeoReferenceConfig)
+    ground_texture: GroundTextureConfig = Field(default_factory=GroundTextureConfig)
 
     @model_validator(mode="after")
     def _validate_camera_center(self) -> "VnsConfig":

@@ -1,0 +1,158 @@
+===== DATE / OS =====
+Wed Jul  1 08:46:07 PKT 2026
+Linux hp-HP-ProBook-445-G8-Notebook-PC 6.8.0-124-generic #124~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue May 26 21:05:19 UTC  x86_64 x86_64 x86_64 GNU/Linux
+
+===== PROJECT =====
+/home/hp/GPS-DENIED-SYSTEM
+ M .claude/plugin/commands/specs-from-srs.md
+ M .claude/plugin/skills/vns-environment/SKILL.md
+ M AGENTS.md
+ M data/kml/polygon.json
+ M simulation/config/simulation.yaml
+ M simulation/database/qau_campus.vnsdb
+ M simulation/models/iris_downward_cam/model.sdf
+ M simulation/scripts/build_reference_database.py
+ M simulation/scripts/capture_reference_images.py
+ M simulation/scripts/simulate_camera_view.py
+ M simulation/scripts/test_run.py
+ D simulation/scripts/visual_navigation.py
+ M simulation/worlds/uav_localization_test.sdf
+ M simulation/worlds/uav_test_world.sdf
+ M specs/FR-10.md
+ M specs/FR-11.md
+ M specs/FR-12.md
+ M specs/FR-9.md
+ M src/vns/app/desktop_app.py
+ M src/vns/config/__init__.py
+ M src/vns/config/models.py
+ M src/vns/core/blender.py
+ M src/vns/core/dead_reckoning.py
+ M src/vns/core/runtime.py
+ M src/vns/core/vns_node.py
+ M src/vns/database/faiss_database.py
+ M src/vns/preprocessing/satellite_preprocessor.py
+ M src/vns/preprocessing/uav_preprocessor.py
+ M src/vns/validation/__init__.py
+ M src/vns/vision/localizer.py
+ M src/vns/vision/retrieval.py
+ M tests/test_blender.py
+ M tests/test_capture_reference_images.py
+ M tests/test_portability.py
+ M tests/test_reference_image_provenance.py
+ M tests/test_retrieval.py
+ M tests/test_runtime.py
+ M tests/test_simulation_config.py
+ M tests/test_simulation_integration.py
+ M tests/unit/test_dead_reckoning.py
+ M tests/unit/test_faiss_database.py
+ M tests/unit/test_preprocessing.py
+?? .claude/settings.local.json
+?? "QAU Polygon.kml"
+?? assign.ipynb
+?? "data/kml/QAU Polygon.kml"
+?? data/kml/google_earth_mission_focus.kml
+?? docs/RUNNING.md
+?? docs/runtime_consolidation.md
+?? docs/uav_preprocessing_calibration.md
+?? docs/validation_dashboard.md
+?? reports/dashboard/
+?? reports/debug_backups/
+?? reports/openhouse_proof/
+?? scripts/diagnose_localization.py
+?? scripts/fr11_env.sh
+?? scripts/offline_vns_check.py
+?? scripts/openhouse_utils.py
+?? scripts/run_project.sh
+?? simulation/database/images_real/
+?? simulation/database/qau_campus.vnsdb.synthetic.bak
+?? simulation/database/templates/
+?? simulation/models/qau_ground_plane/
+?? simulation/scripts/build_real_reference_tiles.py
+?? simulation/scripts/build_satellite_ground_texture.py
+?? simulation/scripts/generate_reference_grid_metadata.py
+?? simulation/scripts/generate_visualization_dashboard.py
+?? simulation/scripts/import_real_reference_imagery.py
+?? simulation/scripts/validate_reference_coverage.py
+?? src/vns/app/google_earth.py
+?? src/vns/preprocessing/calibration.py
+?? src/vns/validation/frame_quality.py
+?? src/vns/validation/posthoc_dashboard.py
+?? src/vns/validation/reference_coverage.py
+?? tests/test_google_earth_launcher.py
+?? tests/test_posthoc_dashboard.py
+?? tests/test_qau_ground_plane_model.py
+?? tests/test_real_reference_imagery_import.py
+?? tests/test_vns_node.py
+?? tests/unit/test_frame_quality.py
+?? tests/unit/test_uav_preprocessor_calibration.py
+
+===== SHELL ENV =====
+SHELL=/bin/bash
+PATH=/home/hp/snap/codex/34/tmp/arg0/codex-arg0CjV8hv:/snap/codex/34/usr/sbin:/snap/codex/34/usr/bin:/snap/codex/34/sbin:/snap/codex/34/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games
+ROS_DISTRO=humble
+GAZEBO_MODEL_PATH=
+PX4_HOME_LAT=
+PX4_HOME_LON=
+
+===== PYTHON =====
+/usr/bin/python3
+Python 3.12.3
+
+===== ROS CHECK =====
+
+===== PYTHON ROS MODULES =====
+MISSING: rclpy - No module named 'rclpy'
+MISSING: cv_bridge - No module named 'cv_bridge'
+MISSING: launch - No module named 'launch'
+MISSING: launch_ros - No module named 'launch_ros'
+
+===== GAZEBO CHECK =====
+
+===== PX4 CHECK =====
+total 228K
+drwxrwxr-x 22 hp hp 4.0K Feb 27 20:46 .
+drwxr-x--- 48 hp hp 4.0K Jul  1 08:41 ..
+-rw-rw-r--  1 hp hp 9.4K Feb 27 19:27 .clang-tidy
+drwxrwxr-x  2 hp hp 4.0K Feb 27 19:27 .devcontainer
+-rw-rw-r--  1 hp hp  449 Feb 27 19:27 .editorconfig
+drwxrwxr-x 10 hp hp 4.0K Mar  7 23:11 .git
+-rw-rw-r--  1 hp hp 1.4K Feb 27 19:27 .gitattributes
+drwxrwxr-x  5 hp hp 4.0K Feb 27 19:27 .github
+-rw-rw-r--  1 hp hp 1.5K Feb 27 19:27 .gitignore
+-rw-rw-r--  1 hp hp 4.9K Feb 27 19:27 .gitmodules
+drwxrwxr-x  2 hp hp 4.0K Jun 26 17:46 .vscode
+-rw-rw-r--  1 hp hp  17K Feb 27 19:27 CMakeLists.txt
+-rw-rw-r--  1 hp hp 3.2K Feb 27 19:27 CODE_OF_CONDUCT.md
+-rw-rw-r--  1 hp hp 1.6K Feb 27 19:27 CONTRIBUTING.md
+-rw-rw-r--  1 hp hp 9.0K Feb 27 19:27 Jenkinsfile
+-rw-rw-r--  1 hp hp 5.1K Feb 27 19:27 Kconfig
+-rw-rw-r--  1 hp hp 1.5K Feb 27 19:27 LICENSE
+-rw-rw-r--  1 hp hp 2.4K Feb 27 19:27 MAINTAINERS.md
+-rw-rw-r--  1 hp hp  27K Feb 27 19:27 Makefile
+-rw-rw-r--  1 hp hp 6.0K Feb 27 19:27 README.md
+drwxrwxr-x  6 hp hp 4.0K Feb 27 19:27 ROMFS
+-rw-rw-r--  1 hp hp 1.1K Feb 27 19:27 SECURITY.md
+drwxrwxr-x 25 hp hp 4.0K Feb 27 19:27 Tools
+drwxrwxr-x 43 hp hp 4.0K Feb 27 19:27 boards
+drwxrwxr-x  3 hp hp 4.0K Feb 27 20:46 build
+drwxrwxr-x  2 hp hp 4.0K Feb 27 19:27 cmake
+drwxrwxr-x 11 hp hp 4.0K Feb 27 19:27 docs
+drwxrwxr-x  3 hp hp 4.0K Feb 27 19:27 integrationtests
+drwxrwxr-x  2 hp hp 4.0K Feb 27 19:27 launch
+drwxrwxr-x  5 hp hp  12K Feb 27 19:27 msg
+-rw-rw-r--  1 hp hp  787 Feb 27 19:27 package.xml
+drwxrwxr-x  7 hp hp 4.0K Feb 27 19:27 platforms
+drwxrwxr-x  5 hp hp 4.0K Feb 27 19:27 posix-configs
+drwxrwxr-x  9 hp hp 4.0K Feb 27 19:27 src
+drwxrwxr-x  2 hp hp 4.0K Feb 27 19:27 srv
+drwxrwxr-x  5 hp hp 4.0K Feb 27 19:27 test
+drwxrwxr-x  2 hp hp 4.0K Feb 27 19:27 test_data
+drwxrwxr-x  2 hp hp 4.0K Feb 27 19:27 validation
+/home/hp/PX4-Autopilot
+/home/hp/PX4-Autopilot/build/px4_sitl_default/bin/px4
+
+===== SETUP.BASH SEARCH =====
+/home/hp/GPS-DENIED-SYSTEM/install/setup.bash
+/home/hp/px4_ros2_ws/install/setup.bash
+
+===== PORT CHECK =====

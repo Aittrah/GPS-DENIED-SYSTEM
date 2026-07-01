@@ -200,3 +200,50 @@ def test_gps_healthy_fast_path_preserves_output_contract_and_skips_visual_overri
     assert after.position.north == pytest.approx(before.position.north)
     assert after.position.east == pytest.approx(before.position.east)
     assert after.position.down == pytest.approx(before.position.down)
+
+
+def test_denied_mode_does_not_use_dr_when_bridge_is_not_ready() -> None:
+    seeded_state = UAVState(
+        position=NEDPoint(north=5.0, east=0.0, down=-30.0),
+        velocity_north=0.0,
+        velocity_east=0.0,
+        velocity_down=0.0,
+        roll=0.0,
+        pitch=0.0,
+        yaw=0.0,
+        confidence=1.0,
+        source="fused",
+        timestamp=0.0,
+    )
+    dead_reckoning = DeadReckoning(
+        initial_state=seeded_state,
+        max_bridge_duration_seconds=2.0,
+        confidence_decay_per_second=0.0,
+    )
+    blender = PositionBlender()
+
+    blender.blend(
+        (33.7470, 73.1370, 580.0),
+        None,
+        GnssState.HEALTHY,
+        current_time=0.0,
+        dead_reckoning=dead_reckoning,
+        dead_reckoning_estimate=dead_reckoning.get_estimate(current_time=0.0),
+        dead_reckoning_ready=True,
+        geo_origin=ORIGIN,
+    )
+
+    estimate = dead_reckoning.get_estimate(current_time=3.0)
+    pose, mode = blender.blend(
+        None,
+        None,
+        GnssState.DENIED,
+        current_time=3.0,
+        dead_reckoning=dead_reckoning,
+        dead_reckoning_estimate=estimate,
+        dead_reckoning_ready=False,
+        geo_origin=ORIGIN,
+    )
+
+    assert mode == "FAILSAFE"
+    assert pose == pytest.approx((33.7470, 73.1370, 580.0))

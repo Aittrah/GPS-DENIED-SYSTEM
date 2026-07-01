@@ -38,7 +38,10 @@ from vns.utils.camera_topic import (
 )
 from vns.utils.paths import (
     compose_gazebo_model_path,
+    compose_gazebo_plugin_path,
     compose_gazebo_resource_path,
+    compose_px4_ld_library_path,
+    resolve_px4_gazebo_models_dir,
     resolve_simulation_root,
     resolve_vns_python,
 )
@@ -143,14 +146,27 @@ def generate_launch_description():
     # compose_gazebo_* also add the Gazebo share dir (/usr/share/gazebo-11) so
     # the camera sensor's shaders and base models resolve without sourcing
     # /usr/share/gazebo/setup.sh first.
+    px4_dir_default = Path.home() / 'PX4-Autopilot'
+    px4_models_dir = resolve_px4_gazebo_models_dir(px4_dir_default)
+    extra_model_dirs = (px4_models_dir,) if px4_models_dir else ()
+
     gazebo_model_path = SetEnvironmentVariable(
         'GAZEBO_MODEL_PATH',
-        compose_gazebo_model_path(models_dir),
+        compose_gazebo_model_path(models_dir, extra_model_dirs=extra_model_dirs),
     )
 
     gazebo_resource_path = SetEnvironmentVariable(
         'GAZEBO_RESOURCE_PATH',
         compose_gazebo_resource_path(worlds_dir),
+    )
+
+    gazebo_plugin_path = SetEnvironmentVariable(
+        'GAZEBO_PLUGIN_PATH',
+        compose_gazebo_plugin_path(px4_root=px4_dir_default),
+    )
+    px4_ld_library_path = SetEnvironmentVariable(
+        'LD_LIBRARY_PATH',
+        compose_px4_ld_library_path(px4_root=px4_dir_default),
     )
 
     # Disable the online model database so gzserver does not block on startup
@@ -229,6 +245,8 @@ def generate_launch_description():
         # Environment
         gazebo_model_path,
         gazebo_resource_path,
+        gazebo_plugin_path,
+        px4_ld_library_path,
         gazebo_model_db,
 
         # Gazebo

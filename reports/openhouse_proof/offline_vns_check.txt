@@ -1,0 +1,19 @@
+Offline VNS Database Self-Check
+===============================
+Images root: /home/hp/GPS-DENIED-SYSTEM/simulation/database/images_real
+Database: /home/hp/GPS-DENIED-SYSTEM/simulation/database/qau_campus.vnsdb
+Entries evaluated: 25
+Method: reuse the stored BoVW histograms from qau_campus.vnsdb for the reference tile files under simulation/database/images_real/. This validates database/index self-retrieval integrity only; it does not prove live ROS/Gazebo/PX4 localization or fresh OpenCV feature extraction.
+Top-1 accuracy: 25/25 (100.00%)
+Top-5 accuracy: 25/25 (100.00%)
+Example retrievals:
+grid_center -> grid_center:1.0000, qau_tile_r2_c1:0.7565, qau_tile_r1_c2:0.7190, qau_tile_r3_c2:0.6758, qau_tile_r2_c3:0.6519
+grid_nw -> grid_nw:1.0000, qau_tile_r1_c0:0.7012, qau_tile_r0_c1:0.6876, qau_tile_r2_c0:0.6501, qau_tile_r1_c1:0.6249
+grid_ne -> grid_ne:1.0000, qau_tile_r0_c3:0.7401, qau_tile_r1_c4:0.7375, qau_tile_r1_c3:0.6962, qau_tile_r2_c4:0.6758
+grid_sw -> grid_sw:1.0000, qau_tile_r4_c1:0.7455, qau_tile_r3_c0:0.7438, qau_tile_r3_c1:0.7244, qau_tile_r3_c2:0.6353
+grid_se -> grid_se:1.0000, qau_tile_r4_c3:0.7249, qau_tile_r3_c4:0.6497, qau_tile_r3_c3:0.6416, qau_tile_r4_c2:0.5690
+qau_tile_r0_c1 -> qau_tile_r0_c1:1.0000, qau_tile_r0_c2:0.7502, qau_tile_r1_c1:0.7202, grid_nw:0.6876, qau_tile_r1_c0:0.6438
+qau_tile_r0_c2 -> qau_tile_r0_c2:1.0000, qau_tile_r0_c1:0.7502, qau_tile_r0_c3:0.7488, qau_tile_r1_c2:0.7214, qau_tile_r1_c1:0.6403
+qau_tile_r0_c3 -> qau_tile_r0_c3:1.0000, qau_tile_r0_c2:0.7488, grid_ne:0.7401, qau_tile_r1_c3:0.7305, qau_tile_r1_c4:0.6571
+qau_tile_r1_c0 -> qau_tile_r1_c0:1.0000, qau_tile_r2_c0:0.7689, grid_nw:0.7012, qau_tile_r1_c1:0.6813, qau_tile_r0_c1:0.6438
+qau_tile_r1_c1 -> qau_tile_r1_c1:1.0000, qau_tile_r1_c2:0.7656, qau_tile_r2_c1:0.7218, qau_tile_r0_c1:0.7202, qau_tile_r1_c0:0.6813

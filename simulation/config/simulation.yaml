@@ -22,7 +22,9 @@ camera:
 # Feature extraction settings
 feature_extraction:
   algorithm: "ORB"
-  max_features: 500
+  max_features: 1000  # raised from 500: real satellite tiles vs OGRE-rendered camera
+                      # frames share fewer descriptors than synthetic pairs; more
+                      # features keep enough RANSAC inliers to verify (FR-11/P4).
   scale_factor: 1.2
   n_levels: 8
   
@@ -42,7 +44,9 @@ patching:
 # Matching settings
 matching:
   confidence_threshold: 0.6
-  ratio_test_threshold: 0.75
+  ratio_test_threshold: 0.80  # raised from 0.75: admits enough good matches between
+                              # real satellite tiles and rendered camera frames to
+                              # clear min_matches/inliers (still discriminative here).
   min_matches: 10
 
 # Coarse retrieval settings
@@ -84,6 +88,16 @@ navigation:
   fusion_blend_duration: 5.0  # seconds
   position_continuity_threshold: 2.0  # meters
 
+# Dead reckoning is a short bridge only. Keep biases explicit and expire DR
+# conservatively if GPS/vision has not re-anchored the estimate recently.
+dead_reckoning:
+  gyro_bias_rad_s: [0.0, 0.0, 0.0]
+  accelerometer_bias_m_s2: [0.0, 0.0, 0.0]
+  max_bridge_duration_seconds: 10.0
+  confidence_decay_per_second: 0.1
+  max_dt_seconds: 1.0  # clamp large forward IMU timestamp gaps instead of over-integrating
+  timestamp_reset_threshold_seconds: 1.0  # backward jumps >= this re-anchor timing instead of raising
+
 # Reference database
 database:
   path: "../database/qau_campus.vnsdb"
@@ -115,8 +129,8 @@ logging:
   max_size_mb: 100
   retention_count: 5
   log_to_console: true
-  log_images: true  # Save downward-camera frames (PNG + manifest) under log_dir/images
-  image_log_stride: 1  # Save every Nth frame (raise to decimate at 30 Hz)
+  log_images: false  # Disabled during sim runs to avoid filling disk (was 16 GB in logs/images)
+  image_log_stride: 30  # When re-enabled, save every 30th frame at 30 Hz (~1/s)
   log_features: true  # Log feature extraction details
 
 # Simulation-specific settings
@@ -124,7 +138,9 @@ simulation:
   enabled: true
   ground_truth_topic: "/vns_drone/ground_truth"
   log_ground_truth: true  # emit packaged runtime JSONL evaluation logs
-  record_estimates_without_ground_truth: false
+  record_estimates_without_ground_truth: true  # log vision estimates even when a
+  # world has no ground-truth publisher (e.g. localization_test's static camera),
+  # so the post-hoc dashboard has successful-localization samples to overlay.
   position_error_threshold: 5.0  # meters - warn if error exceeds this
 
 # Geographic reference (QAU Campus, Islamabad)
@@ -132,3 +148,25 @@ geo_reference:
   origin_latitude: 33.7470
   origin_longitude: 73.1370
   origin_altitude: 550.0  # meters MSL
+
+# Gazebo ground-plane texture (simulation/models/qau_ground_plane/). Documents
+# how the satellite texture maps onto the world so the downward camera, the
+# reference database, and the world's <spherical_coordinates> stay aligned.
+# Built by simulation/scripts/build_satellite_ground_texture.py from
+# data/satellite/raw/qau_campus_satellite.jpg.
+ground_texture:
+  texture_path: "../models/qau_ground_plane/materials/textures/qau_satellite.png"
+  # Ground-box footprint in metres. Aspect ratio matches the cleaned source
+  # photo (not stretched to a square) -- see model.sdf's "satellite_map" visual.
+  world_size_east_m: 600.0
+  world_size_north_m: 450.6
+  # World origin == geo_reference origin above == the Gazebo (0, 0) point the
+  # textured box is centred on.
+  origin_latitude: 33.7470
+  origin_longitude: 73.1370
+  gazebo_origin_x: 0.0
+  gazebo_origin_y: 0.0
+  # Gazebo ENU convention: +X is east, +Y is north (matches
+  # simulation/scripts/build_ground_texture.py's world_to_px and
+  # src/vns/utils/coordinates.py's enu_to_geodetic).
+  axis_convention: "x=east, y=north"

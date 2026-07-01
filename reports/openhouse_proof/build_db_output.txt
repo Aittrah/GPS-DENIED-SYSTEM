@@ -1,0 +1,89 @@
+==> Building real-imagery reference database
+Source: /home/hp/GPS-DENIED-SYSTEM/data/satellite/raw/qau_campus_satellite.jpg (755x592)
+Cleaned (toolbar cropped, 2 text band(s) cloned, 6 region(s) inpainted): 755x567
+Wrote /home/hp/GPS-DENIED-SYSTEM/simulation/models/qau_ground_plane/materials/textures/qau_satellite.png (2048x1538 px, 0.2930 m/px)
+Footprint: 600.0 m (E-W) x 450.6 m (N-S)
+Fallback base-plane color (BGR, 0-255): 101.5 102.0 98.9
+Texture: /home/hp/GPS-DENIED-SYSTEM/simulation/models/qau_ground_plane/materials/textures/qau_satellite.png (2048x1538, 0.2930 m/px)
+Camera footprint: 277.1 m x 207.8 m -> crop 946x709px -> 640x480
+Wrote 25 tiles (5 named + 5x5 grid) to /home/hp/GPS-DENIED-SYSTEM/simulation/database/images_real
+Bounds: lat [33.745909, 33.748091]  lon [73.135256, 73.138744]
+Index:  /home/hp/GPS-DENIED-SYSTEM/simulation/database/images_real/database_index.yaml
+/home/hp/snap/codex/34/.local/lib/python3.12/site-packages/joblib/_multiprocessing_helpers.py:44: UserWarning: [Errno 13] Permission denied.  joblib will operate in serial mode
+  warnings.warn("%s.  joblib will operate in serial mode" % (e,))
+2026-07-01 08:46:29,524 [INFO] vns.build_reference_database: Training BoVW vocabulary: K=1000 over 25000 descriptors (metric=cosine, seed=42).
+2026-07-01 08:46:30,166 [DEBUG] vns.build_reference_database:   grid_center: histogram nnz=555 / 1000
+2026-07-01 08:46:30,168 [DEBUG] vns.build_reference_database:   grid_nw: histogram nnz=526 / 1000
+2026-07-01 08:46:30,169 [DEBUG] vns.build_reference_database:   grid_ne: histogram nnz=510 / 1000
+2026-07-01 08:46:30,170 [DEBUG] vns.build_reference_database:   grid_sw: histogram nnz=542 / 1000
+2026-07-01 08:46:30,172 [DEBUG] vns.build_reference_database:   grid_se: histogram nnz=528 / 1000
+2026-07-01 08:46:30,173 [DEBUG] vns.build_reference_database:   qau_tile_r0_c1: histogram nnz=549 / 1000
+2026-07-01 08:46:30,174 [DEBUG] vns.build_reference_database:   qau_tile_r0_c2: histogram nnz=547 / 1000
+2026-07-01 08:46:30,176 [DEBUG] vns.build_reference_database:   qau_tile_r0_c3: histogram nnz=545 / 1000
+2026-07-01 08:46:30,177 [DEBUG] vns.build_reference_database:   qau_tile_r1_c0: histogram nnz=534 / 1000
+2026-07-01 08:46:30,178 [DEBUG] vns.build_reference_database:   qau_tile_r1_c1: histogram nnz=530 / 1000
+2026-07-01 08:46:30,179 [DEBUG] vns.build_reference_database:   qau_tile_r1_c2: histogram nnz=532 / 1000
+2026-07-01 08:46:30,180 [DEBUG] vns.build_reference_database:   qau_tile_r1_c3: histogram nnz=518 / 1000
+2026-07-01 08:46:30,181 [DEBUG] vns.build_reference_database:   qau_tile_r1_c4: histogram nnz=517 / 1000
+2026-07-01 08:46:30,181 [DEBUG] vns.build_reference_database:   qau_tile_r2_c0: histogram nnz=526 / 1000
+2026-07-01 08:46:30,182 [DEBUG] vns.build_reference_database:   qau_tile_r2_c1: histogram nnz=551 / 1000
+2026-07-01 08:46:30,184 [DEBUG] vns.build_reference_database:   qau_tile_r2_c3: histogram nnz=562 / 1000
+2026-07-01 08:46:30,185 [DEBUG] vns.build_reference_database:   qau_tile_r2_c4: histogram nnz=511 / 1000
+2026-07-01 08:46:30,186 [DEBUG] vns.build_reference_database:   qau_tile_r3_c0: histogram nnz=524 / 1000
+2026-07-01 08:46:30,186 [DEBUG] vns.build_reference_database:   qau_tile_r3_c1: histogram nnz=556 / 1000
+2026-07-01 08:46:30,188 [DEBUG] vns.build_reference_database:   qau_tile_r3_c2: histogram nnz=556 / 1000
+2026-07-01 08:46:30,189 [DEBUG] vns.build_reference_database:   qau_tile_r3_c3: histogram nnz=558 / 1000
+2026-07-01 08:46:30,190 [DEBUG] vns.build_reference_database:   qau_tile_r3_c4: histogram nnz=540 / 1000
+2026-07-01 08:46:30,191 [DEBUG] vns.build_reference_database:   qau_tile_r4_c1: histogram nnz=544 / 1000
+2026-07-01 08:46:30,192 [DEBUG] vns.build_reference_database:   qau_tile_r4_c2: histogram nnz=533 / 1000
+2026-07-01 08:46:30,193 [DEBUG] vns.build_reference_database:   qau_tile_r4_c3: histogram nnz=535 / 1000
+2026-07-01 08:46:30,193 [INFO] vns.build_reference_database: BoVW vocabulary built: K=1000, 25 reference histograms.
+Building database from: /home/hp/GPS-DENIED-SYSTEM/simulation/database/images_real/database_index.yaml
+Processing 25 images...
+  [1/25] grid_center - 1000 features
+  [2/25] grid_nw - 1000 features
+  [3/25] grid_ne - 1000 features
+  [4/25] grid_sw - 1000 features
+  [5/25] grid_se - 1000 features
+  [6/25] qau_tile_r0_c1 - 1000 features
+  [7/25] qau_tile_r0_c2 - 1000 features
+  [8/25] qau_tile_r0_c3 - 1000 features
+  [9/25] qau_tile_r1_c0 - 1000 features
+  [10/25] qau_tile_r1_c1 - 1000 features
+  [11/25] qau_tile_r1_c2 - 1000 features
+  [12/25] qau_tile_r1_c3 - 1000 features
+  [13/25] qau_tile_r1_c4 - 1000 features
+  [14/25] qau_tile_r2_c0 - 1000 features
+  [15/25] qau_tile_r2_c1 - 1000 features
+  [16/25] qau_tile_r2_c3 - 1000 features
+  [17/25] qau_tile_r2_c4 - 1000 features
+  [18/25] qau_tile_r3_c0 - 1000 features
+  [19/25] qau_tile_r3_c1 - 1000 features
+  [20/25] qau_tile_r3_c2 - 1000 features
+  [21/25] qau_tile_r3_c3 - 1000 features
+  [22/25] qau_tile_r3_c4 - 1000 features
+  [23/25] qau_tile_r4_c1 - 1000 features
+  [24/25] qau_tile_r4_c2 - 1000 features
+  [25/25] qau_tile_r4_c3 - 1000 features
+
+=== Database Statistics ===
+Name: QAU Campus Reference Database (real satellite tiles)
+Version: 2.0.0
+Algorithm: ORB
+Total entries: 25
+Total features: 25000
+Average features per image: 1000.0
+Geographic bounds:
+  Latitude:  33.745909 to 33.748091
+  Longitude: 73.135256 to 73.138744
+
+=== BoVW Index Statistics ===
+Vocabulary size (K): 1000
+Reference histograms: 25
+NN metric: cosine
+Histogram non-zeros: min=510 mean=537.2 max=562
+Mean query time (histogram + top-5 lookup): 1.069 ms over 200 runs
+Database saved to: /home/hp/GPS-DENIED-SYSTEM/simulation/database/qau_campus.vnsdb
+
+Database build complete!
+Database rebuild completed.

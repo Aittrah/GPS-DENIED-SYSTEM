@@ -16,6 +16,8 @@ sensor inputs are controlled synthetic values fed through the runtime's public
 as in ``tests/test_runtime.py``.
 """
 
+from copy import deepcopy
+
 import numpy as np
 import pytest
 
@@ -247,3 +249,28 @@ def test_gnss_timeout_drives_denied_through_runtime(
     result = runtime.process_frame(frame, timestamp=t0 + timeout + 0.2)
     assert result.navigation_mode != "GPS"
     assert result.navigation_mode == "DR"
+
+
+def test_short_dr_bridge_expires_to_failsafe(
+    monkeypatch, sample_config, sample_database
+):
+    """A bounded DR bridge eventually expires to FAILSAFE if no correction arrives."""
+    config = deepcopy(sample_config)
+    config["dead_reckoning"] = {
+        "max_bridge_duration_seconds": 1.0,
+        "confidence_decay_per_second": 0.0,
+    }
+    frame = _frame()
+    runtime = VnsRuntime(config, database=sample_database)
+
+    _healthy_gps(runtime, ORIGIN_LAT, ORIGIN_LON, MISSION_ALT, timestamp=100.0)
+    _deny_gps(runtime, ORIGIN_LAT, ORIGIN_LON, MISSION_ALT, timestamp=100.1)
+
+    monkeypatch.setattr(runtime.localizer, "localize", _failed_localization(100.2))
+    short_bridge = runtime.process_frame(frame, timestamp=100.2)
+    assert short_bridge.navigation_mode == "DR"
+
+    monkeypatch.setattr(runtime.localizer, "localize", _failed_localization(101.2))
+    expired = runtime.process_frame(frame, timestamp=101.2)
+    assert expired.navigation_mode == "FAILSAFE"
+    assert expired.blended_pose is None

@@ -1,0 +1,18 @@
+Localization Diagnosis
+======================
+Number of ground_truth logs: 9
+Newest ground_truth log path: /home/hp/GPS-DENIED-SYSTEM/logs/ground_truth_1782871089.jsonl
+Total records: 42139 valid JSON rows (1 truncated/invalid line(s) ignored)
+matched_ref_id record count: 15990
+localization_success record count: 0
+Top matched reference IDs: grid_nw=13611, qau_tile_r0_c2=1225, qau_tile_r0_c1=706, qau_tile_r1_c2=291, qau_tile_r1_c0=69, grid_center=59, grid_se=20, qau_tile_r4_c3=2, qau_tile_r3_c2=2, qau_tile_r3_c3=2
+Number of image manifest logs: 9
+Number of query images: 42139
+Whether query images are green-dominant: no (sampled 5 PNG frame(s); mean RGB 119.0/137.5/154.4, green-dominant pixel ratio 0.000)
+Whether reference tiles are real satellite tiles: yes (database_index.yaml source_type=real_satellite)
+Average ORB keypoints in query images: 264.63 (from the last 42139 'Extracted N features' lines in logs/vns.log)
+Average ORB keypoints in reference tiles: 1000.00 (from qau_campus.vnsdb feature_count metadata)
+Reason geometric verification failed: Latest run reasons: no_geometric_match=26149, low_confidence (0.33 < 0.6)=8830, low_confidence (0.37 < 0.6)=5876, low_confidence (0.40 < 0.6)=1079, low_confidence (0.43 < 0.6)=184. Dashboard note: Offline verification did not recover enough inliers.
+Whether logs are old green-frame logs or new real-texture logs: new real-texture logs (latest log predates the current rebuilt texture file timestamp)
+Whether dashboard is sampling failed logs or useful logs: failed logs; the dashboard can only sample matched-but-unsuccessful rows because localization_success count is 0
+Texture path check: simulation/worlds/uav_test_world.sdf and simulation/worlds/uav_localization_test.sdf both include model://qau_ground_plane, which resolves to simulation/models/qau_ground_plane/materials/textures/qau_satellite.png

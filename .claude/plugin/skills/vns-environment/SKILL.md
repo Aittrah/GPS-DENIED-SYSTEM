@@ -76,7 +76,7 @@ description: Quick-reference card for the VNS development environment — binari
 | `/home/hp/GPS-DENIED-SYSTEM/` | Project root |
 | `simulation/models/` | Gazebo UAV/world models |
 | `simulation/worlds/` | World SDF files (uav_test_world.sdf full campus; uav_localization_test.sdf map-only + static cam) |
-| `simulation/scripts/` | build_reference_database.py, capture_reference_images.py, generate_accuracy_report.py, visual_navigation.py, test_run.py, cli.py |
+| `simulation/scripts/` | build_reference_database.py, capture_reference_images.py, generate_accuracy_report.py, test_run.py, cli.py |
 | `simulation/database/` | qau_campus.vnsdb, images/, qau_reference_metadata.yaml |
 | `simulation/launch/` | full_simulation.launch.py, UAV_simulation.launch.py, px4_sitl.launch.py |
 | `simulation/config/` | simulation.yaml |

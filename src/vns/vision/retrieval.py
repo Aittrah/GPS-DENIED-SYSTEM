@@ -1,10 +1,11 @@
 """Coarse retrieval: find top-K candidate reference images by descriptor voting."""
 
 import logging
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from collections import Counter
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -198,6 +199,12 @@ class RetrievalIndex:
 
     Wraps a :class:`RetrievalBackend` (default: FLANN/LSH).  Swap the
     backend for BoW or VLAD without touching calling code.
+
+    For the BoVW backend an optional **geographic gate** can intersect the
+    appearance top-k with a radius around a position prior, with a
+    :meth:`ReferenceDatabase.query_region` fallback when appearance retrieval
+    yields nothing usable.  The gate is a no-op for the FLANN backend and when
+    no prior is supplied, so existing callers are unaffected.
     """
 
     def __init__(
@@ -205,9 +212,17 @@ class RetrievalIndex:
         backend: RetrievalBackend = None,  # type: ignore[assignment]
         *,
         backend_name: str = "flann",
+        database: Optional[ReferenceDatabase] = None,
+        geo_gate: bool = False,
+        geo_gate_radius_deg: float = 0.002,
+        query_radius_deg: float = 0.001,
     ) -> None:
         self._backend = backend or FlannLshBackend()
         self._backend_name = backend_name
+        self._database = database
+        self._geo_gate = geo_gate
+        self._geo_gate_radius_deg = geo_gate_radius_deg
+        self._query_radius_deg = query_radius_deg
 
     @property
     def backend_name(self) -> str:
@@ -218,6 +233,8 @@ class RetrievalIndex:
         cls,
         config: Mapping[str, object] | None,
         database: ReferenceDatabase,
+        *,
+        query_radius_deg: float = 0.001,
     ) -> "RetrievalIndex":
         retrieval_cfg = dict(config or {})
         mode = _normalize_retrieval_mode(
@@ -227,6 +244,10 @@ class RetrievalIndex:
         normalized_bovw_cfg = bovw_cfg if isinstance(bovw_cfg, Mapping) else {}
         fallback_to_flann = bool(
             normalized_bovw_cfg.get("fallback_to_flann", False)
+        )
+        geo_gate = bool(normalized_bovw_cfg.get("geo_gate", False))
+        geo_gate_radius_deg = float(
+            normalized_bovw_cfg.get("geo_gate_radius_deg", 0.002)
         )
 
         if mode == "bovw":
@@ -238,6 +259,10 @@ class RetrievalIndex:
                 index = cls(
                     backend=BoVWRetrievalBackend.from_database(database),
                     backend_name="bovw",
+                    database=database,
+                    geo_gate=geo_gate,
+                    geo_gate_radius_deg=geo_gate_radius_deg,
+                    query_radius_deg=query_radius_deg,
                 )
             except ValueError:
                 if not fallback_to_flann:
@@ -246,9 +271,19 @@ class RetrievalIndex:
                     "BoVW retrieval unavailable; falling back to FLANN/LSH.",
                     exc_info=True,
                 )
-                index = cls(backend=FlannLshBackend(), backend_name="flann")
+                index = cls(
+                    backend=FlannLshBackend(),
+                    backend_name="flann",
+                    database=database,
+                    query_radius_deg=query_radius_deg,
+                )
         else:
-            index = cls(backend=FlannLshBackend(), backend_name="flann")
+            index = cls(
+                backend=FlannLshBackend(),
+                backend_name="flann",
+                database=database,
+                query_radius_deg=query_radius_deg,
+            )
 
         index.build_index(list(database.entries.values()))
         return index
@@ -260,5 +295,92 @@ class RetrievalIndex:
         self,
         descriptors: np.ndarray | None,
         top_k: int = 5,
+        *,
+        prior: Optional[Tuple[float, float]] = None,
     ) -> RetrievalResults:
-        return self._backend.query(descriptors, top_k)
+        """Return top-K candidates, optionally geo-gated around ``prior``.
+
+        Args:
+            descriptors: Query-frame ORB descriptors ``(M, 32)``.
+            top_k: Number of appearance candidates to retrieve.
+            prior: Trustworthy ``(lat, lon)`` position prior, or ``None``.
+                Geo-gating and the region fallback only apply to the BoVW
+                backend when a prior is supplied; the FLANN path ignores it.
+        """
+        results = self._backend.query(descriptors, top_k)
+
+        # Geo-gating and the region fallback are BoVW-only behaviour.
+        if self._backend_name != "bovw":
+            return results
+
+        if results:
+            if self._geo_gate and prior is not None:
+                return self._apply_geo_gate(results, prior)
+            return results
+
+        # Appearance retrieval yielded nothing usable (e.g. empty descriptors).
+        # Fall back to a geographic radius search around the prior, when present.
+        if prior is not None and self._database is not None:
+            lat, lon = prior
+            entries = self._database.query_region(lat, lon, self._query_radius_deg)
+            return [(entry.id, 0.0) for entry in entries]
+        return results
+
+    def _apply_geo_gate(
+        self,
+        results: RetrievalResults,
+        prior: Tuple[float, float],
+    ) -> RetrievalResults:
+        """Intersect appearance candidates with a radius around ``prior``.
+
+        Never returns empty: if the gate would discard every candidate (e.g. a
+        stale/drifted prior) the unfiltered appearance top-k is returned and the
+        disagreement is logged.  Mirrors ``visual_navigation.py``'s hybrid gate.
+        """
+        if self._database is None:
+            return results
+        lat, lon = prior
+        radius = self._geo_gate_radius_deg
+        gated = [
+            (entry_id, score)
+            for entry_id, score in results
+            if self._within_radius(entry_id, lat, lon, radius)
+        ]
+        if gated:
+            logger.debug(
+                "BoVW+geo retained %d/%d candidate(s) within %.4f deg of (%.6f, %.6f)",
+                len(gated),
+                len(results),
+                radius,
+                lat,
+                lon,
+            )
+            return gated
+        logger.warning(
+            "Geo gate discarded all %d BoVW candidate(s) near (%.6f, %.6f); "
+            "prior may be stale/drifted -- using unfiltered appearance top-k.",
+            len(results),
+            lat,
+            lon,
+        )
+        return results
+
+    def _within_radius(
+        self,
+        entry_id: str,
+        lat: float,
+        lon: float,
+        radius_deg: float,
+    ) -> bool:
+        """Whether a reference entry lies within ``radius_deg`` of ``(lat, lon)``.
+
+        Uses the same planar lat/lon distance as
+        :meth:`ReferenceDatabase.query_region` so the gate and the geographic
+        fallback agree.
+        """
+        entry = self._database.entries.get(entry_id) if self._database else None
+        if entry is None:
+            return False
+        dlat = entry.latitude - lat
+        dlon = entry.longitude - lon
+        return math.sqrt(dlat ** 2 + dlon ** 2) <= radius_deg
